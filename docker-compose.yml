@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  xds:
+    image: rueian/zenvoy-xds:latest
+    build:
+      context: .
+      args:
+        bin: xds
+    ports:
+      - 18000:18000
+  echo:
+    image: rueian/zenvoy-echo:latest
+    build:
+      context: .
+      args:
+        bin: echo
+    ports:
+      - 8080:8080
+  envoy:
+    image: envoyproxy/envoy:v1.16.0
+    volumes:
+      - ./hack/envoy:/etc/envoy
+    ports:
+      - 10000:10000
+      - 10001:10001
