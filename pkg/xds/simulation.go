@@ -52,17 +52,18 @@ func makeCluster(clusterName string) *cluster.Cluster {
 			EdsConfig:   makeConfigSource(),
 		},
 		LbPolicy: cluster.Cluster_ROUND_ROBIN,
-		//LbPolicy:        cluster.Cluster_ROUND_ROBIN,
-		//LoadAssignment:  makeEndpoint(clusterName),
-		//DnsLookupFamily: cluster.Cluster_V4_ONLY,
 	}
 }
 
 func makeEndpoint(clusterName string) *endpoint.ClusterLoadAssignment {
 	// docker-compose workaround
-	ips, err := net.LookupIP(UpstreamHost)
-	if err != nil || len(ips) == 0 {
-		return nil
+	ip := net.ParseIP(UpstreamHost)
+	if ip == nil {
+		ips, err := net.LookupIP(UpstreamHost)
+		if err != nil || len(ips) == 0 {
+			return nil
+		}
+		ip = ips[0]
 	}
 	return &endpoint.ClusterLoadAssignment{
 		ClusterName: clusterName,
@@ -74,7 +75,7 @@ func makeEndpoint(clusterName string) *endpoint.ClusterLoadAssignment {
 							Address: &core.Address_SocketAddress{
 								SocketAddress: &core.SocketAddress{
 									Protocol: core.SocketAddress_TCP,
-									Address:  ips[0].String(),
+									Address:  ip.String(),
 									PortSpecifier: &core.SocketAddress_PortValue{
 										PortValue: UpstreamPort,
 									},
