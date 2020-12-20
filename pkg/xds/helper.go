@@ -20,8 +20,6 @@ import (
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
-	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
-	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"github.com/golang/protobuf/ptypes"
@@ -29,17 +27,10 @@ import (
 	"time"
 )
 
-func Simulation(ps *PassiveSnapshotGenerator) {
-	ps.InjectSnapshot(GenerateSnapshot())
-}
-
 const (
-	ClusterName  = "example_proxy_cluster"
 	RouteName    = "local_route"
 	ListenerName = "listener_0"
 	ListenerPort = 10000
-	UpstreamHost = "echo"
-	UpstreamPort = 8080
 )
 
 func makeCluster(clusterName string) *cluster.Cluster {
@@ -55,63 +46,61 @@ func makeCluster(clusterName string) *cluster.Cluster {
 	}
 }
 
-func makeEndpoint(clusterName string) *endpoint.ClusterLoadAssignment {
-	// docker-compose workaround
-	ip := net.ParseIP(UpstreamHost)
-	if ip == nil {
-		ips, err := net.LookupIP(UpstreamHost)
-		if err != nil || len(ips) == 0 {
-			return nil
+func makeEndpoints(clusterName string, port uint32, hosts ...string) *endpoint.ClusterLoadAssignment {
+	endpoints := make([]*endpoint.LbEndpoint, 0, len(hosts))
+	for _, host := range hosts {
+		ip := net.ParseIP(host)
+		if ip == nil {
+			ips, err := net.LookupIP(host)
+			if err != nil || len(ips) == 0 {
+				continue
+			}
+			ip = ips[0]
 		}
-		ip = ips[0]
-	}
-	return &endpoint.ClusterLoadAssignment{
-		ClusterName: clusterName,
-		Endpoints: []*endpoint.LocalityLbEndpoints{{
-			LbEndpoints: []*endpoint.LbEndpoint{{
-				HostIdentifier: &endpoint.LbEndpoint_Endpoint{
-					Endpoint: &endpoint.Endpoint{
-						Address: &core.Address{
-							Address: &core.Address_SocketAddress{
-								SocketAddress: &core.SocketAddress{
-									Protocol: core.SocketAddress_TCP,
-									Address:  ip.String(),
-									PortSpecifier: &core.SocketAddress_PortValue{
-										PortValue: UpstreamPort,
-									},
+		endpoints = append(endpoints, &endpoint.LbEndpoint{
+			HostIdentifier: &endpoint.LbEndpoint_Endpoint{
+				Endpoint: &endpoint.Endpoint{
+					Address: &core.Address{
+						Address: &core.Address_SocketAddress{
+							SocketAddress: &core.SocketAddress{
+								Protocol: core.SocketAddress_TCP,
+								Address:  ip.String(),
+								PortSpecifier: &core.SocketAddress_PortValue{
+									PortValue: port,
 								},
 							},
 						},
 					},
 				},
-			}},
+			},
+		})
+	}
+
+	return &endpoint.ClusterLoadAssignment{
+		ClusterName: clusterName,
+		Endpoints: []*endpoint.LocalityLbEndpoints{{
+			LbEndpoints: endpoints,
 		}},
 	}
 }
 
-func makeRoute(routeName string, clusterName string) *route.RouteConfiguration {
-	return &route.RouteConfiguration{
-		Name: routeName,
-		VirtualHosts: []*route.VirtualHost{{
-			Name:    "local_service",
-			Domains: []string{"*"},
-			Routes: []*route.Route{{
-				Match: &route.RouteMatch{
-					PathSpecifier: &route.RouteMatch_Prefix{
-						Prefix: "/",
+func makeVirtualHostRoutes(clusterName string, domain string, prefix string) *route.VirtualHost {
+	return &route.VirtualHost{
+		Name:    clusterName,
+		Domains: []string{domain},
+		Routes: []*route.Route{{
+			Match: &route.RouteMatch{
+				PathSpecifier: &route.RouteMatch_Prefix{
+					Prefix: prefix,
+				},
+			},
+			Action: &route.Route_Route{
+				Route: &route.RouteAction{
+					ClusterSpecifier: &route.RouteAction_Cluster{
+						Cluster: clusterName,
 					},
 				},
-				Action: &route.Route_Route{
-					Route: &route.RouteAction{
-						ClusterSpecifier: &route.RouteAction_Cluster{
-							Cluster: clusterName,
-						},
-						HostRewriteSpecifier: &route.RouteAction_HostRewriteLiteral{
-							HostRewriteLiteral: UpstreamHost,
-						},
-					},
-				},
-			}},
+			},
 		}},
 	}
 }
@@ -176,16 +165,4 @@ func makeConfigSource() *core.ConfigSource {
 		},
 	}
 	return source
-}
-
-func GenerateSnapshot() cache.Snapshot {
-	return cache.NewSnapshot(
-		"1",
-		[]types.Resource{makeEndpoint(ClusterName)}, // endpoints
-		[]types.Resource{makeCluster(ClusterName)},
-		[]types.Resource{makeRoute(RouteName, ClusterName)},
-		[]types.Resource{makeHTTPListener(ListenerName, RouteName)},
-		[]types.Resource{}, // runtimes
-		[]types.Resource{}, // secrets
-	)
 }

@@ -17,26 +17,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	clusterservice "github.com/envoyproxy/go-control-plane/envoy/service/cluster/v3"
-	discoverygrpc "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
-	endpointservice "github.com/envoyproxy/go-control-plane/envoy/service/endpoint/v3"
-	listenerservice "github.com/envoyproxy/go-control-plane/envoy/service/listener/v3"
-	routeservice "github.com/envoyproxy/go-control-plane/envoy/service/route/v3"
-	runtimeservice "github.com/envoyproxy/go-control-plane/envoy/service/runtime/v3"
-	secretservice "github.com/envoyproxy/go-control-plane/envoy/service/secret/v3"
-	cachev3 "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
-	serverv3 "github.com/envoyproxy/go-control-plane/pkg/server/v3"
-	testv3 "github.com/envoyproxy/go-control-plane/pkg/test/v3"
 	"github.com/rueian/zenvoy/pkg/logger"
 	"github.com/rueian/zenvoy/pkg/xds"
-	"google.golang.org/grpc"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
 )
-
-const grpcMaxConcurrentStreams = 1000000
 
 var (
 	l *logger.Std
@@ -60,73 +47,29 @@ func init() {
 func main() {
 	flag.Parse()
 
-	cache := cachev3.NewSnapshotCache(false, cachev3.IDHash{}, l)
-	generator := xds.PassiveSnapshotGenerator{}
+	server := xds.NewServer(l, nodeID, xds.Debug(l.Debug))
 
-	ctx, cancel := context.WithCancel(context.Background())
-	ch, err := generator.Start(ctx)
+	var err error
+	err = server.SetCluster("echo")
+	err = server.SetClusterEndpoints("echo", 8080, "echo")
+	err = server.SetClusterRoute("echo", "*", "/")
 	if err != nil {
-		l.Fatalf("fail to start snapshot generator: %+v", err)
+		l.Fatalf("fail to update xds %+v", err)
 	}
+
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		l.Fatalf("listen error %+v", err)
+	}
+
 	go func() {
-		xds.Simulation(&generator)
-	}()
-
-	started := false
-	l.Infof("start receiving snapshots")
-	for snapshot := range ch {
-		if err := snapshot.Consistent(); err != nil {
-			l.Errorf("skip inconsistent snapshot: %+v\n%+v", snapshot, err)
-			continue
-		}
-
-		if err := cache.SetSnapshot(nodeID, snapshot); err != nil {
-			l.Errorf("snapshot error %q for %+v", err, snapshot)
-			continue
-		}
-
-		l.Debugf("will serve snapshot %+v", snapshot)
-
-		if started {
-			continue
-		}
-
-		cb := &testv3.Callbacks{Debug: l.Debug}
-		server := serverv3.NewServer(ctx, cache, cb)
-
-		var grpcOptions []grpc.ServerOption
-		grpcOptions = append(grpcOptions, grpc.MaxConcurrentStreams(grpcMaxConcurrentStreams))
-		grpcServer := grpc.NewServer(grpcOptions...)
-
-		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-		if err != nil {
+		if err := server.Serve(context.Background(), lis); err != nil {
 			l.Fatalf("listen error %+v", err)
 		}
+	}()
 
-		// register services
-		discoverygrpc.RegisterAggregatedDiscoveryServiceServer(grpcServer, server)
-		endpointservice.RegisterEndpointDiscoveryServiceServer(grpcServer, server)
-		clusterservice.RegisterClusterDiscoveryServiceServer(grpcServer, server)
-		routeservice.RegisterRouteDiscoveryServiceServer(grpcServer, server)
-		listenerservice.RegisterListenerDiscoveryServiceServer(grpcServer, server)
-		secretservice.RegisterSecretDiscoveryServiceServer(grpcServer, server)
-		runtimeservice.RegisterRuntimeDiscoveryServiceServer(grpcServer, server)
-
-		go func() {
-			l.Infof("management server listening on %d", port)
-			if err = grpcServer.Serve(lis); err != nil {
-				l.Fatalf("management server start error %+v", err)
-			}
-		}()
-
-		go func() {
-			sigs := make(chan os.Signal, 1)
-			signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-			<-sigs
-			grpcServer.GracefulStop()
-			cancel()
-		}()
-
-		started = true
-	}
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	<-sigs
+	server.GracefulStop()
 }
