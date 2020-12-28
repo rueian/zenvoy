@@ -101,20 +101,17 @@ func (s *Server) onXDSUpdated() {
 		endpoints := s.xds.GetIntendedEndpoints(port)
 		if len(endpoints) == 0 {
 			for k, conn := range n {
-				conn.Close()
 				delete(n, k)
+				go conn.Close()
 			}
 			continue
 		}
 		others := exclude(endpoints, first(n).LocalAddr().String())
-		for k, conn := range n {
-			go func(port uint32, key, endpoint string) {
-				s.redirect(endpoint, conn)
-				s.mu.Lock()
-				n := s.pendingConn[port]
-				delete(n, key)
-				s.mu.Unlock()
-			}(port, k, others[rand.Intn(len(others))])
+		if len(others) != 0 {
+			for k, conn := range n {
+				delete(n, k)
+				go s.redirect(others[rand.Intn(len(others))], conn)
+			}
 		}
 	}
 }
