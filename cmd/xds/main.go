@@ -17,6 +17,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/rueian/zenvoy/pkg/alloc"
 	"github.com/rueian/zenvoy/pkg/logger"
 	"github.com/rueian/zenvoy/pkg/xds"
 	"net"
@@ -30,6 +31,9 @@ var (
 
 	port   uint
 	nodeID string
+
+	proxyMinPort uint
+	proxyMaxPort uint
 )
 
 func init() {
@@ -42,6 +46,9 @@ func init() {
 
 	// Tell Envoy to use this Node ID
 	flag.StringVar(&nodeID, "nodeID", "zenvoy", "Node ID")
+
+	flag.UintVar(&proxyMinPort, "proxyMinPort", 20000, "min proxy port for envoy cluster")
+	flag.UintVar(&proxyMaxPort, "proxyMaxPort", 32767, "max proxy port for envoy cluster")
 }
 
 func main() {
@@ -49,9 +56,12 @@ func main() {
 
 	server := xds.NewServer(l, nodeID, xds.Debug(l.Debug))
 
+	idAlloc := alloc.NewID(uint32(proxyMinPort), uint32(proxyMaxPort))
+	echoProxyPort, _ := idAlloc.Acquire()
+
 	var err error
 	err = server.SetCluster("echo")
-	err = server.SetClusterEndpoints("echo", 8080, "echo")
+	err = server.SetClusterEndpoints("echo", echoProxyPort, "proxy")
 	err = server.SetClusterRoute("echo", "*", "/")
 	if err != nil {
 		l.Fatalf("fail to update xds %+v", err)

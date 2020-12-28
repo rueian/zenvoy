@@ -9,6 +9,14 @@ services:
         bin: xds
     ports:
       - 18000:18000
+  proxy:
+    image: rueian/zenvoy-proxy:latest
+    build:
+      context: .
+      args:
+        bin: proxy
+    ports:
+      - 20000:20000
   echo:
     image: rueian/zenvoy-echo:latest
     build:
