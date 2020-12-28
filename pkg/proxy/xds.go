@@ -13,7 +13,7 @@ func NewStore() *store {
 
 type store struct {
 	endpoints map[uint32][]string
-	mu        sync.Mutex
+	mu        sync.RWMutex
 	cb        []func()
 }
 
@@ -27,8 +27,8 @@ func (x *store) SetIntendedEndpoints(port uint32, endpoints []string) {
 }
 
 func (x *store) GetIntendedEndpoints(port uint32) []string {
-	x.mu.Lock()
-	defer x.mu.Unlock()
+	x.mu.RLock()
+	defer x.mu.RUnlock()
 	return x.endpoints[port]
 }
 
