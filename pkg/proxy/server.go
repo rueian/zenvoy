@@ -5,7 +5,6 @@ import (
 	"io"
 	"math/rand"
 	"net"
-	"strconv"
 	"sync"
 )
 
@@ -38,19 +37,8 @@ func (s *Server) Serve(ln net.Listener) error {
 }
 
 func (s *Server) handleConn(conn net.Conn) {
-	var port uint64
-
-	_, ps, err := net.SplitHostPort(conn.LocalAddr().String())
-	if err == nil {
-		port, err = strconv.ParseUint(ps, 10, 32)
-	}
-	if err != nil {
-		s.logger.Errorf("fail to parse port from %v", conn.LocalAddr().String())
-		conn.Close()
-		return
-	}
-
-	endpoints := s.xds.GetIntendedEndpoints(uint32(port))
+	p := port(conn.LocalAddr())
+	endpoints := s.xds.GetIntendedEndpoints(p)
 	if len(endpoints) == 0 {
 		conn.Close()
 		return
@@ -58,7 +46,7 @@ func (s *Server) handleConn(conn net.Conn) {
 
 	others := exclude(endpoints, conn.LocalAddr().String())
 	if len(others) == 0 {
-		s.pending(uint32(port), conn)
+		s.pending(p, conn)
 		return
 	}
 
@@ -131,4 +119,11 @@ func first(m map[string]net.Conn) net.Conn {
 		return v
 	}
 	return nil
+}
+
+func port(addr net.Addr) uint32 {
+	if addr, ok := addr.(*net.TCPAddr); ok {
+		return uint32(addr.Port)
+	}
+	panic(addr.String() + "is not a tcp address")
 }
