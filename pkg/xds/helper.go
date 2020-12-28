@@ -152,17 +152,8 @@ func makeHTTPListener(listenerName string, route string) *listener.Listener {
 func makeConfigSource() *core.ConfigSource {
 	source := &core.ConfigSource{}
 	source.ResourceApiVersion = resource.DefaultAPIVersion
-	source.ConfigSourceSpecifier = &core.ConfigSource_ApiConfigSource{
-		ApiConfigSource: &core.ApiConfigSource{
-			TransportApiVersion:       resource.DefaultAPIVersion,
-			ApiType:                   core.ApiConfigSource_GRPC,
-			SetNodeOnFirstMessageOnly: true,
-			GrpcServices: []*core.GrpcService{{
-				TargetSpecifier: &core.GrpcService_EnvoyGrpc_{
-					EnvoyGrpc: &core.GrpcService_EnvoyGrpc{ClusterName: "xds_cluster"},
-				},
-			}},
-		},
+	source.ConfigSourceSpecifier = &core.ConfigSource_Ads{
+		Ads: &core.AggregatedConfigSource{},
 	}
 	return source
 }
