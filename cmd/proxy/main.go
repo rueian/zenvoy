@@ -6,15 +6,20 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	envoy_config_core_v3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	"github.com/rueian/zenvoy/pkg/logger"
 	"github.com/rueian/zenvoy/pkg/proxy"
+	"google.golang.org/grpc"
 	"net"
 	"syscall"
+	"time"
 )
 
 var (
-	l    *logger.Std
-	port uint
+	l       *logger.Std
+	port    uint
+	xdsAddr string
+	nodeID  string
 )
 
 func init() {
@@ -23,6 +28,10 @@ func init() {
 	flag.BoolVar(&l.Debug, "debug", false, "Enable xDS server debug logging")
 
 	flag.UintVar(&port, "port", 20000, "proxy server port")
+
+	flag.StringVar(&nodeID, "nodeID", "zenvoy", "Node ID")
+
+	flag.StringVar(&xdsAddr, "xds", "xds:18000", "xds server addr")
 }
 
 func main() {
@@ -32,9 +41,26 @@ func main() {
 		l.Fatalf("listen error %+v", err)
 	}
 
-	store := proxy.NewStore()
-	server := proxy.NewServer(l, store)
-	store.SetIntendedEndpoints(20000, []string{"echo:8080"})
+	conn, err := grpc.Dial(xdsAddr, grpc.WithInsecure())
+	if err != nil {
+		l.Fatalf("grpc dial error %+v", err)
+	}
+
+	ip := GetNonLoopbackIP()
+	l.Infof("proxy ip identifier: %s", ip)
+
+	xdsClient := proxy.NewXDSClient(l, conn, nodeID, func(addr *envoy_config_core_v3.SocketAddress) bool {
+		return addr.Address == ip
+	})
+	server := proxy.NewServer(l, xdsClient)
+	go func() {
+		for {
+			if err := xdsClient.Listen(context.Background()); err != nil {
+				l.Errorf("xdsClient listen err %+v", err)
+			}
+			time.Sleep(time.Second)
+		}
+	}()
 	server.Serve(lis)
 }
 
@@ -45,4 +71,19 @@ func SetSocketOptions(network string, address string, c syscall.RawConn) error {
 			l.Fatalf("fail to set IP_TRANSPARENT: %v", err)
 		}
 	})
+}
+
+func GetNonLoopbackIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, address := range addrs {
+		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+	return ""
 }

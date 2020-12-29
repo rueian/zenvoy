@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 var (
@@ -58,6 +59,14 @@ func main() {
 
 	idAlloc := alloc.NewID(uint32(proxyMinPort), uint32(proxyMaxPort))
 	echoProxyPort, _ := idAlloc.Acquire()
+
+	go func() {
+		time.Sleep(10 * time.Second)
+		err := server.SetClusterEndpoints("echo", 8080, "echo")
+		if err != nil {
+			l.Errorf("fail to update xds %+v", err)
+		}
+	}()
 
 	var err error
 	err = server.SetCluster("echo")
