@@ -14,30 +14,35 @@ import (
 )
 
 type XDS interface {
-	GetIntendedEndpoints(port uint32) []string
+	GetIntendedEndpoints(port uint32) ClusterEndpoints
 	OnUpdated(func())
 }
 
 func NewStore() *store {
-	return &store{endpoints: make(map[uint32][]string)}
+	return &store{endpoints: make(map[uint32]ClusterEndpoints)}
+}
+
+type ClusterEndpoints struct {
+	Cluster   string
+	Endpoints []string
 }
 
 type store struct {
-	endpoints map[uint32][]string
+	endpoints map[uint32]ClusterEndpoints
 	mu        sync.RWMutex
 	cb        []func()
 }
 
-func (x *store) SetIntendedEndpoints(port uint32, endpoints []string) {
+func (x *store) SetIntendedEndpoints(port uint32, clusterEndpoints ClusterEndpoints) {
 	x.mu.Lock()
-	x.endpoints[port] = endpoints
+	x.endpoints[port] = clusterEndpoints
 	x.mu.Unlock()
 	for _, f := range x.cb {
 		f()
 	}
 }
 
-func (x *store) GetIntendedEndpoints(port uint32) []string {
+func (x *store) GetIntendedEndpoints(port uint32) ClusterEndpoints {
 	x.mu.RLock()
 	defer x.mu.RUnlock()
 	return x.endpoints[port]
@@ -145,7 +150,7 @@ func (c *Client) Listen(ctx context.Context) error {
 							addr := endpoint.Address.GetSocketAddress()
 							if c.isProxy(addr) {
 								if port, ok := c.clusters[cla.ClusterName]; ok && port != addr.GetPortValue() {
-									c.store.SetIntendedEndpoints(port, nil)
+									c.store.SetIntendedEndpoints(port, ClusterEndpoints{})
 								}
 								c.clusters[cla.ClusterName] = addr.GetPortValue()
 							}
@@ -154,7 +159,10 @@ func (c *Client) Listen(ctx context.Context) error {
 					}
 				}
 				if port, ok := c.clusters[cla.ClusterName]; ok {
-					c.store.SetIntendedEndpoints(port, intended)
+					c.store.SetIntendedEndpoints(port, ClusterEndpoints{
+						Cluster:   cla.ClusterName,
+						Endpoints: intended,
+					})
 				}
 			}
 		}

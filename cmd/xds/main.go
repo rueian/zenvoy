@@ -21,10 +21,10 @@ import (
 	"github.com/rueian/zenvoy/pkg/logger"
 	"github.com/rueian/zenvoy/pkg/xds"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 )
 
 var (
@@ -35,6 +35,8 @@ var (
 
 	proxyMinPort uint
 	proxyMaxPort uint
+
+	triggerPort uint
 )
 
 func init() {
@@ -44,6 +46,8 @@ func init() {
 
 	// The port that this xDS server listens on
 	flag.UintVar(&port, "port", 18000, "xDS management server port")
+
+	flag.UintVar(&triggerPort, "triggerPort", 17999, "trigger port to change xds")
 
 	// Tell Envoy to use this Node ID
 	flag.StringVar(&nodeID, "nodeID", "zenvoy", "Node ID")
@@ -61,11 +65,13 @@ func main() {
 	echoProxyPort, _ := idAlloc.Acquire()
 
 	go func() {
-		time.Sleep(10 * time.Second)
-		err := server.SetClusterEndpoints("echo", 8080, "echo")
-		if err != nil {
-			l.Errorf("fail to update xds %+v", err)
-		}
+		http.ListenAndServe(fmt.Sprintf(":%d", triggerPort), http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			err := server.SetClusterEndpoints("echo", 8080, "echo")
+			if err != nil {
+				l.Errorf("fail to update xds %+v", err)
+			}
+			w.WriteHeader(http.StatusNoContent)
+		}))
 	}()
 
 	var err error

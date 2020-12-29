@@ -8,11 +8,12 @@ import (
 	"sync"
 )
 
-func NewServer(logger log.Logger, xds XDS) *Server {
+func NewServer(logger log.Logger, xds XDS, trigger func(string)) *Server {
 	s := &Server{
 		logger:      logger,
 		pendingConn: make(map[uint32]map[string]net.Conn),
 		xds:         xds,
+		triggerFn:   trigger,
 	}
 	s.xds.OnUpdated(s.onXDSUpdated)
 	return s
@@ -22,8 +23,8 @@ type Server struct {
 	logger      log.Logger
 	pendingConn map[uint32]map[string]net.Conn
 	mu          sync.Mutex
-
-	xds XDS
+	xds         XDS
+	triggerFn   func(string)
 }
 
 func (s *Server) Serve(ln net.Listener) error {
@@ -38,15 +39,16 @@ func (s *Server) Serve(ln net.Listener) error {
 
 func (s *Server) handleConn(conn net.Conn) {
 	p := port(conn.LocalAddr())
-	endpoints := s.xds.GetIntendedEndpoints(p)
-	if len(endpoints) == 0 {
+	ces := s.xds.GetIntendedEndpoints(p)
+	if len(ces.Endpoints) == 0 {
 		conn.Close()
 		return
 	}
 
-	others := exclude(endpoints, conn.LocalAddr().String())
+	others := exclude(ces.Endpoints, conn.LocalAddr().String())
 	if len(others) == 0 {
 		s.pending(p, conn)
+		go s.trigger(ces.Cluster)
 		return
 	}
 
@@ -79,6 +81,12 @@ func (s *Server) redirect(endpoint string, conn net.Conn) {
 	io.Copy(conn2, conn)
 }
 
+func (s *Server) trigger(cluster string) {
+	if s.triggerFn != nil {
+		s.triggerFn(cluster)
+	}
+}
+
 func (s *Server) onXDSUpdated() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -86,15 +94,15 @@ func (s *Server) onXDSUpdated() {
 		if len(n) == 0 {
 			continue
 		}
-		endpoints := s.xds.GetIntendedEndpoints(port)
-		if len(endpoints) == 0 {
+		ces := s.xds.GetIntendedEndpoints(port)
+		if len(ces.Endpoints) == 0 {
 			for k, conn := range n {
 				delete(n, k)
 				go conn.Close()
 			}
 			continue
 		}
-		others := exclude(endpoints, first(n).LocalAddr().String())
+		others := exclude(ces.Endpoints, first(n).LocalAddr().String())
 		if len(others) != 0 {
 			for k, conn := range n {
 				delete(n, k)
