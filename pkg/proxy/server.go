@@ -89,20 +89,17 @@ func (s *Server) trigger(cluster string) {
 	}
 }
 
-func (s *Server) onXDSUpdated() {
+func (s *Server) onXDSUpdated(port uint32) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for port, n := range s.pendingConn {
-		if len(n) == 0 {
-			continue
-		}
+	if n, ok := s.pendingConn[port]; ok && len(n) > 0 {
 		ces := s.xds.GetIntendedEndpoints(port)
 		if len(ces.Endpoints) == 0 {
 			for k, conn := range n {
 				delete(n, k)
 				go conn.Close()
 			}
-			continue
+			return
 		}
 		others := exclude(ces.Endpoints, s.isProxyFn)
 		if len(others) != 0 {

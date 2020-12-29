@@ -15,7 +15,7 @@ import (
 
 type XDS interface {
 	GetIntendedEndpoints(port uint32) ClusterEndpoints
-	OnUpdated(func())
+	OnUpdated(func(port uint32))
 }
 
 func NewStore() *store {
@@ -30,7 +30,7 @@ type ClusterEndpoints struct {
 type store struct {
 	endpoints map[uint32]ClusterEndpoints
 	mu        sync.RWMutex
-	cb        []func()
+	cb        []func(uint32)
 }
 
 func (x *store) SetIntendedEndpoints(port uint32, clusterEndpoints ClusterEndpoints) {
@@ -38,7 +38,7 @@ func (x *store) SetIntendedEndpoints(port uint32, clusterEndpoints ClusterEndpoi
 	x.endpoints[port] = clusterEndpoints
 	x.mu.Unlock()
 	for _, f := range x.cb {
-		f()
+		f(port)
 	}
 }
 
@@ -48,7 +48,7 @@ func (x *store) GetIntendedEndpoints(port uint32) ClusterEndpoints {
 	return x.endpoints[port]
 }
 
-func (x *store) OnUpdated(f func()) {
+func (x *store) OnUpdated(f func(port uint32)) {
 	x.cb = append(x.cb, f)
 }
 
