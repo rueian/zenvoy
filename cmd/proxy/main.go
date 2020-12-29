@@ -6,13 +6,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	envoy_config_core_v3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	"github.com/rueian/zenvoy/pkg/logger"
 	"github.com/rueian/zenvoy/pkg/proxy"
 	"golang.org/x/sync/singleflight"
 	"google.golang.org/grpc"
 	"net"
 	"net/http"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -54,12 +54,14 @@ func main() {
 	ip := GetNonLoopbackIP()
 	l.Infof("proxy ip identifier: %s", ip)
 
+	isProxy := func(addr string) bool {
+		return strings.HasPrefix(addr, ip)
+	}
+
 	sg := singleflight.Group{}
 
-	xdsClient := proxy.NewXDSClient(l, conn, nodeID, func(addr *envoy_config_core_v3.SocketAddress) bool {
-		return addr.Address == ip
-	})
-	server := proxy.NewServer(l, xdsClient, func(cluster string) {
+	xdsClient := proxy.NewXDSClient(l, conn, nodeID, isProxy)
+	server := proxy.NewServer(l, xdsClient, isProxy, func(cluster string) {
 		sg.Do(cluster, func() (interface{}, error) {
 			resp, err := http.Get(triggerURL)
 			if err != nil {

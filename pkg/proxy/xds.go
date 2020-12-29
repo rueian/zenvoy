@@ -52,7 +52,7 @@ func (x *store) OnUpdated(f func()) {
 	x.cb = append(x.cb, f)
 }
 
-func NewXDSClient(logger log.Logger, conn *grpc.ClientConn, nodeID string, isProxy func(addr *corev3.SocketAddress) bool) *Client {
+func NewXDSClient(logger log.Logger, conn *grpc.ClientConn, nodeID string, isProxy isProxyFn) *Client {
 	return &Client{
 		store:    NewStore(),
 		conn:     conn,
@@ -63,6 +63,8 @@ func NewXDSClient(logger log.Logger, conn *grpc.ClientConn, nodeID string, isPro
 	}
 }
 
+type isProxyFn func(string) bool
+
 type Client struct {
 	*store
 
@@ -72,7 +74,7 @@ type Client struct {
 
 	clusters map[string]uint32
 
-	isProxy func(addr *corev3.SocketAddress) bool
+	isProxy isProxyFn
 }
 
 func (c *Client) Listen(ctx context.Context) error {
@@ -146,15 +148,15 @@ func (c *Client) Listen(ctx context.Context) error {
 						if endpoint := e.GetEndpoint(); endpoint == nil {
 							c.logger.Errorf("fail to GetEndpoint() %s", typeEDS, e.String())
 							continue
-						} else {
-							addr := endpoint.Address.GetSocketAddress()
-							if c.isProxy(addr) {
+						} else if addr := endpoint.Address.GetSocketAddress(); addr != nil {
+							addrStr := fmt.Sprintf("%s:%d", addr.Address, addr.GetPortValue())
+							if c.isProxy(addrStr) {
 								if port, ok := c.clusters[cla.ClusterName]; ok && port != addr.GetPortValue() {
 									c.store.SetIntendedEndpoints(port, ClusterEndpoints{})
 								}
 								c.clusters[cla.ClusterName] = addr.GetPortValue()
 							}
-							intended = append(intended, fmt.Sprintf("%s:%d", addr.Address, addr.GetPortValue()))
+							intended = append(intended, addrStr)
 						}
 					}
 				}

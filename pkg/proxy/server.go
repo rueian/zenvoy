@@ -8,12 +8,13 @@ import (
 	"sync"
 )
 
-func NewServer(logger log.Logger, xds XDS, trigger func(string)) *Server {
+func NewServer(logger log.Logger, xds XDS, isProxy isProxyFn, trigger func(string)) *Server {
 	s := &Server{
+		xds:         xds,
 		logger:      logger,
 		pendingConn: make(map[uint32]map[string]net.Conn),
-		xds:         xds,
 		triggerFn:   trigger,
+		isProxyFn:   isProxy,
 	}
 	s.xds.OnUpdated(s.onXDSUpdated)
 	return s
@@ -24,6 +25,7 @@ type Server struct {
 	pendingConn map[uint32]map[string]net.Conn
 	mu          sync.Mutex
 	xds         XDS
+	isProxyFn   isProxyFn
 	triggerFn   func(string)
 }
 
@@ -45,7 +47,7 @@ func (s *Server) handleConn(conn net.Conn) {
 		return
 	}
 
-	others := exclude(ces.Endpoints, conn.LocalAddr().String())
+	others := exclude(ces.Endpoints, s.isProxyFn)
 	if len(others) == 0 {
 		s.pending(p, conn)
 		go s.trigger(ces.Cluster)
@@ -102,7 +104,7 @@ func (s *Server) onXDSUpdated() {
 			}
 			continue
 		}
-		others := exclude(ces.Endpoints, first(n).LocalAddr().String())
+		others := exclude(ces.Endpoints, s.isProxyFn)
 		if len(others) != 0 {
 			for k, conn := range n {
 				delete(n, k)
@@ -112,21 +114,14 @@ func (s *Server) onXDSUpdated() {
 	}
 }
 
-func exclude(in []string, x string) []string {
+func exclude(in []string, fn func(string) bool) []string {
 	out := make([]string, 0, len(in))
 	for _, i := range in {
-		if i != x {
+		if !fn(i) {
 			out = append(out, i)
 		}
 	}
 	return out
-}
-
-func first(m map[string]net.Conn) net.Conn {
-	for _, v := range m {
-		return v
-	}
-	return nil
 }
 
 func port(addr net.Addr) uint32 {
