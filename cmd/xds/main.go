@@ -48,6 +48,7 @@ func main() {
 	if err != nil {
 		l.Fatalf("listen error %+v", err)
 	}
+	defer lis.Close()
 
 	go func() {
 		if err := server.Serve(context.Background(), lis); err != nil {

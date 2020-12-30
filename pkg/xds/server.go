@@ -52,6 +52,7 @@ func (s *Server) Serve(ctx context.Context, lis net.Listener, options ...grpc.Se
 	listenerservice.RegisterListenerDiscoveryServiceServer(server, svc)
 	secretservice.RegisterSecretDiscoveryServiceServer(server, svc)
 	runtimeservice.RegisterRuntimeDiscoveryServiceServer(server, svc)
+	s.server = server
 	return server.Serve(lis)
 }
 

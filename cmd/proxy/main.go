@@ -30,11 +30,13 @@ func main() {
 	if err != nil {
 		l.Fatalf("listen error %+v", err)
 	}
+	defer lis.Close()
 
 	conn, err := grpc.Dial(conf.XDSAddr, grpc.WithInsecure())
 	if err != nil {
 		l.Fatalf("grpc dial error %+v", err)
 	}
+	defer conn.Close()
 
 	ip := GetNonLoopbackIP()
 	l.Infof("proxy ip identifier: %s", ip)
