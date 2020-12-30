@@ -5,6 +5,7 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/log"
+	"github.com/golang/protobuf/proto"
 	"strconv"
 )
 
@@ -32,31 +33,51 @@ func (s *Snapshot) Cache() cache.SnapshotCache {
 }
 
 func (s *Snapshot) SetCluster(name string) error {
+	if _, ok := s.cds[name]; ok {
+		return nil
+	}
 	s.cds[name] = makeCluster(name)
 	return s.setSnapshot()
 }
 
 func (s *Snapshot) RemoveCluster(name string) error {
+	if _, ok := s.cds[name]; !ok {
+		return nil
+	}
 	delete(s.cds, name)
 	return s.setSnapshot()
 }
 
 func (s *Snapshot) SetClusterRoute(name, domain, prefix string) error {
-	s.vhs[name] = makeVirtualHostRoutes(name, domain, prefix)
+	routes := makeVirtualHostRoutes(name, domain, prefix)
+	if original, ok := s.vhs[name]; ok && proto.Equal(original, routes) {
+		return nil
+	}
+	s.vhs[name] = routes
 	return s.setSnapshot()
 }
 
 func (s *Snapshot) RemoveClusterRoute(name string) error {
+	if _, ok := s.vhs[name]; !ok {
+		return nil
+	}
 	delete(s.vhs, name)
 	return s.setSnapshot()
 }
 
 func (s *Snapshot) SetClusterEndpoints(name string, port uint32, hosts ...string) error {
-	s.eds[name] = makeEndpoints(name, port, hosts...)
+	endpoints := makeEndpoints(name, port, hosts...)
+	if original, ok := s.eds[name]; ok && proto.Equal(original, endpoints) {
+		return nil
+	}
+	s.eds[name] = endpoints
 	return s.setSnapshot()
 }
 
 func (s *Snapshot) RemoveClusterEndpoints(name string) error {
+	if _, ok := s.eds[name]; !ok {
+		return nil
+	}
 	delete(s.eds, name)
 	return s.setSnapshot()
 }

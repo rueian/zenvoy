@@ -34,6 +34,10 @@ type store struct {
 
 func (x *store) SetCluster(port uint32, cluster Cluster) {
 	x.mu.Lock()
+	if orig := x.clusters[port]; orig.Name == cluster.Name && !changed(orig.Endpoints, cluster.Endpoints) {
+		x.mu.Unlock()
+		return
+	}
 	x.clusters[port] = cluster
 	x.mu.Unlock()
 	for _, f := range x.cb {
@@ -96,6 +100,8 @@ func (c *Client) Listen(ctx context.Context) error {
 		TypeUrl: typeCDS,
 	}
 
+	var previous []string
+
 	for {
 		in, err := stream.Recv()
 		if err != nil {
@@ -112,7 +118,7 @@ func (c *Client) Listen(ctx context.Context) error {
 
 		switch in.TypeUrl {
 		case typeCDS:
-			var edsClusters []string
+			var current []string
 			for _, res := range in.Resources {
 				cluster := &clusterv3.Cluster{}
 				if err := res.UnmarshalTo(cluster); err != nil {
@@ -120,16 +126,17 @@ func (c *Client) Listen(ctx context.Context) error {
 					continue
 				}
 				if cluster.EdsClusterConfig != nil {
-					edsClusters = append(edsClusters, cluster.Name)
+					current = append(current, cluster.Name)
 				}
 			}
-			if len(edsClusters) > 0 {
+			if changed(previous, current) {
 				reqs = append(reqs, &discoverygrpc.DiscoveryRequest{
-					ResourceNames: edsClusters,
+					ResourceNames: current,
 					TypeUrl:       typeEDS,
 				})
 			}
-			c.logger.Infof("receive xds clusters: %v", edsClusters)
+			previous = current
+			c.logger.Infof("receive xds clusters: ver=%s %v", in.VersionInfo, current)
 		case typeEDS:
 			for _, res := range in.Resources {
 				cla := &endpointv3.ClusterLoadAssignment{}
@@ -161,7 +168,7 @@ func (c *Client) Listen(ctx context.Context) error {
 						Endpoints: intended,
 					})
 				}
-				c.logger.Infof("receive xds endpoints: %s %v", cla.ClusterName, intended)
+				c.logger.Infof("receive xds endpoints: ver=%s %s %v", in.VersionInfo, cla.ClusterName, intended)
 			}
 		}
 
@@ -169,6 +176,25 @@ func (c *Client) Listen(ctx context.Context) error {
 			requests <- req
 		}
 	}
+}
+
+func changed(prev, now []string) bool {
+	if len(prev) != len(now) {
+		return true
+	}
+	if len(prev) != len(now) {
+		return true
+	}
+	m := make(map[string]bool, len(prev))
+	for _, p := range prev {
+		m[p] = true
+	}
+	for _, n := range now {
+		if _, ok := m[n]; !ok {
+			return true
+		}
+	}
+	return false
 }
 
 const (

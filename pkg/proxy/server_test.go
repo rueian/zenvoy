@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-type suite struct {
+type ServerSuite struct {
 	store    *store
 	server   *Server
 	serverLn net.Listener
@@ -17,12 +17,12 @@ type suite struct {
 	triggers *int
 }
 
-func (s *suite) Close() {
+func (s *ServerSuite) Close() {
 	s.serverLn.Close()
 	s.targetLn.Close()
 }
 
-func setup(t *testing.T) *suite {
+func setup(t *testing.T) *ServerSuite {
 	ln1, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +46,7 @@ func setup(t *testing.T) *suite {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
-	return &suite{
+	return &ServerSuite{
 		store:    store,
 		server:   server,
 		serverLn: ln1,
