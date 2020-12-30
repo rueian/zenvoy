@@ -14,6 +14,7 @@ type suite struct {
 	server   *Server
 	serverLn net.Listener
 	targetLn net.Listener
+	triggers *int
 }
 
 func (s *suite) Close() {
@@ -22,9 +23,6 @@ func (s *suite) Close() {
 }
 
 func setup(t *testing.T) *suite {
-	store := NewStore()
-	server := NewServer(&logger.Std{}, store)
-
 	ln1, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -33,6 +31,15 @@ func setup(t *testing.T) *suite {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	triggers := 0
+
+	store := NewStore()
+	server := NewServer(&logger.Std{}, store, func(s string) bool {
+		return s == ln1.Addr().String()
+	}, func(s string) {
+		triggers++
+	})
 
 	go server.Serve(ln1)
 	go http.Serve(ln2, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
@@ -44,6 +51,7 @@ func setup(t *testing.T) *suite {
 		server:   server,
 		serverLn: ln1,
 		targetLn: ln2,
+		triggers: &triggers,
 	}
 }
 
@@ -61,9 +69,11 @@ func TestDirectRedirect(t *testing.T) {
 	suite := setup(t)
 	defer suite.Close()
 
-	suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), []string{
-		suite.serverLn.Addr().String(),
-		suite.targetLn.Addr().String(),
+	suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), ClusterEndpoints{
+		Endpoints: []string{
+			suite.serverLn.Addr().String(),
+			suite.targetLn.Addr().String(),
+		},
 	})
 
 	resp, err := http.Get("http://" + suite.serverLn.Addr().String())
@@ -76,14 +86,18 @@ func TestPendingRedirect(t *testing.T) {
 	suite := setup(t)
 	defer suite.Close()
 
-	suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), []string{
-		suite.serverLn.Addr().String(),
+	suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), ClusterEndpoints{
+		Endpoints: []string{
+			suite.serverLn.Addr().String(),
+		},
 	})
 	go func() {
 		time.Sleep(time.Second / 2)
-		suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), []string{
-			suite.serverLn.Addr().String(),
-			suite.targetLn.Addr().String(),
+		suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), ClusterEndpoints{
+			Endpoints: []string{
+				suite.serverLn.Addr().String(),
+				suite.targetLn.Addr().String(),
+			},
 		})
 	}()
 
@@ -97,12 +111,14 @@ func TestPendingClose(t *testing.T) {
 	suite := setup(t)
 	defer suite.Close()
 
-	suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), []string{
-		suite.serverLn.Addr().String(),
+	suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), ClusterEndpoints{
+		Endpoints: []string{
+			suite.serverLn.Addr().String(),
+		},
 	})
 	go func() {
 		time.Sleep(time.Second / 2)
-		suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), []string{})
+		suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), ClusterEndpoints{})
 	}()
 
 	resp, err := http.Get("http://" + suite.serverLn.Addr().String())
@@ -115,20 +131,26 @@ func TestDynamicRedirect(t *testing.T) {
 	suite := setup(t)
 	defer suite.Close()
 
-	suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), []string{
-		suite.serverLn.Addr().String(),
+	suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), ClusterEndpoints{
+		Endpoints: []string{
+			suite.serverLn.Addr().String(),
+		},
 	})
 
 	stop := make(chan struct{})
 	go func() {
 		for i := 0; i < 10; i++ {
-			suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), []string{
-				suite.serverLn.Addr().String(),
+			suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), ClusterEndpoints{
+				Endpoints: []string{
+					suite.serverLn.Addr().String(),
+				},
 			})
 			time.Sleep(time.Second / 10)
-			suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), []string{
-				suite.serverLn.Addr().String(),
-				suite.targetLn.Addr().String(),
+			suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), ClusterEndpoints{
+				Endpoints: []string{
+					suite.serverLn.Addr().String(),
+					suite.targetLn.Addr().String(),
+				},
 			})
 			time.Sleep(time.Second / 10)
 		}
@@ -141,6 +163,12 @@ loop:
 		case <-stop:
 			if i == 0 {
 				t.Fatal("no request succeeded")
+			}
+			if *suite.triggers == 0 {
+				t.Fatal("no triggers")
+			}
+			if *suite.triggers >= i {
+				t.Fatalf("triggers(%d) >= requests(%d)", *suite.triggers, i)
 			}
 			break loop
 		default:
