@@ -49,6 +49,7 @@ func main() {
 		l.Fatalf("listen error %+v", err)
 	}
 	defer lis.Close()
+	l.Infof("xds listen on %s", lis.Addr().String())
 
 	go func() {
 		if err := server.Serve(context.Background(), lis); err != nil {

@@ -8,6 +8,7 @@ import (
 	"github.com/rueian/zenvoy/pkg/config"
 	"github.com/rueian/zenvoy/pkg/logger"
 	"github.com/rueian/zenvoy/pkg/proxy"
+	"github.com/rueian/zenvoy/pkg/tproxy"
 	"golang.org/x/sync/singleflight"
 	"google.golang.org/grpc"
 	"net"
@@ -25,12 +26,18 @@ func main() {
 		l.Fatalf("config error %+v", err)
 	}
 
+	err = SetupTPROXY(conf.ProxyPort, conf.ProxyPortMin, conf.ProxyPortMax)
+	if err != nil {
+		l.Fatalf("tproxy error %+v", err)
+	}
+
 	lc := net.ListenConfig{Control: SetSocketOptions}
 	lis, err := lc.Listen(context.Background(), "tcp", fmt.Sprintf(":%d", conf.ProxyPort))
 	if err != nil {
 		l.Fatalf("listen error %+v", err)
 	}
 	defer lis.Close()
+	l.Infof("proxy listen on %s", lis.Addr().String())
 
 	conn, err := grpc.Dial(conf.XDSAddr, grpc.WithInsecure())
 	if err != nil {
@@ -93,4 +100,23 @@ func GetNonLoopbackIP() string {
 		}
 	}
 	return ""
+}
+
+func SetupTPROXY(port, portMin, portMax uint32) error {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return err
+	}
+	for _, address := range addrs {
+		if ipnet, ok := address.(*net.IPNet); ok {
+			if ipnet.IP.To4() != nil {
+				_, err = tproxy.Setup(ipnet.IP.String(), port, portMin, portMax)
+				if err != nil {
+					return err
+				}
+				l.Infof("set tproxy for %s:%d-%d", ipnet.IP.String(), portMin, portMax)
+			}
+		}
+	}
+	return nil
 }
