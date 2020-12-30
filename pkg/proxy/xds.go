@@ -9,43 +9,42 @@ import (
 	discoverygrpc "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/log"
 	"google.golang.org/grpc"
-	"io"
 	"sync"
 )
 
-type XDS interface {
-	GetIntendedEndpoints(port uint32) ClusterEndpoints
+type XDSClient interface {
+	GetCluster(port uint32) Cluster
 	OnUpdated(func(port uint32))
 }
 
 func NewStore() *store {
-	return &store{endpoints: make(map[uint32]ClusterEndpoints)}
+	return &store{clusters: make(map[uint32]Cluster)}
 }
 
-type ClusterEndpoints struct {
-	Cluster   string
+type Cluster struct {
+	Name      string
 	Endpoints []string
 }
 
 type store struct {
-	endpoints map[uint32]ClusterEndpoints
-	mu        sync.RWMutex
-	cb        []func(uint32)
+	clusters map[uint32]Cluster
+	mu       sync.RWMutex
+	cb       []func(uint32)
 }
 
-func (x *store) SetIntendedEndpoints(port uint32, clusterEndpoints ClusterEndpoints) {
+func (x *store) SetCluster(port uint32, cluster Cluster) {
 	x.mu.Lock()
-	x.endpoints[port] = clusterEndpoints
+	x.clusters[port] = cluster
 	x.mu.Unlock()
 	for _, f := range x.cb {
 		f(port)
 	}
 }
 
-func (x *store) GetIntendedEndpoints(port uint32) ClusterEndpoints {
+func (x *store) GetCluster(port uint32) Cluster {
 	x.mu.RLock()
 	defer x.mu.RUnlock()
-	return x.endpoints[port]
+	return x.clusters[port]
 }
 
 func (x *store) OnUpdated(f func(port uint32)) {
@@ -55,7 +54,7 @@ func (x *store) OnUpdated(f func(port uint32)) {
 func NewXDSClient(logger log.Logger, conn *grpc.ClientConn, nodeID string, isProxy isProxyFn) *Client {
 	return &Client{
 		store:    NewStore(),
-		conn:     conn,
+		grpcConn: conn,
 		nodeID:   nodeID,
 		logger:   logger,
 		clusters: make(map[string]uint32),
@@ -68,17 +67,15 @@ type isProxyFn func(string) bool
 type Client struct {
 	*store
 
-	conn   *grpc.ClientConn
-	nodeID string
-	logger log.Logger
-
+	logger   log.Logger
+	nodeID   string
+	isProxy  isProxyFn
 	clusters map[string]uint32
-
-	isProxy isProxyFn
+	grpcConn *grpc.ClientConn
 }
 
 func (c *Client) Listen(ctx context.Context) error {
-	client := discoverygrpc.NewAggregatedDiscoveryServiceClient(c.conn)
+	client := discoverygrpc.NewAggregatedDiscoveryServiceClient(c.grpcConn)
 	stream, err := client.StreamAggregatedResources(ctx)
 	if err != nil {
 		return err
@@ -101,9 +98,6 @@ func (c *Client) Listen(ctx context.Context) error {
 
 	for {
 		in, err := stream.Recv()
-		if err == io.EOF {
-			return nil
-		}
 		if err != nil {
 			return err
 		}
@@ -135,6 +129,7 @@ func (c *Client) Listen(ctx context.Context) error {
 					TypeUrl:       typeEDS,
 				})
 			}
+			c.logger.Infof("receive xds clusters: %v", edsClusters)
 		case typeEDS:
 			for _, res := range in.Resources {
 				cla := &endpointv3.ClusterLoadAssignment{}
@@ -152,7 +147,7 @@ func (c *Client) Listen(ctx context.Context) error {
 							addrStr := fmt.Sprintf("%s:%d", addr.Address, addr.GetPortValue())
 							if c.isProxy(addrStr) {
 								if port, ok := c.clusters[cla.ClusterName]; ok && port != addr.GetPortValue() {
-									c.store.SetIntendedEndpoints(port, ClusterEndpoints{})
+									c.store.SetCluster(port, Cluster{})
 								}
 								c.clusters[cla.ClusterName] = addr.GetPortValue()
 							}
@@ -161,11 +156,12 @@ func (c *Client) Listen(ctx context.Context) error {
 					}
 				}
 				if port, ok := c.clusters[cla.ClusterName]; ok {
-					c.store.SetIntendedEndpoints(port, ClusterEndpoints{
-						Cluster:   cla.ClusterName,
+					c.store.SetCluster(port, Cluster{
+						Name:      cla.ClusterName,
 						Endpoints: intended,
 					})
 				}
+				c.logger.Infof("receive xds endpoints: %s %v", cla.ClusterName, intended)
 			}
 		}
 

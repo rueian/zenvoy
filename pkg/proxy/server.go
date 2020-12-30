@@ -8,25 +8,25 @@ import (
 	"sync"
 )
 
-func NewServer(logger log.Logger, xds XDS, isProxy isProxyFn, trigger func(string)) *Server {
+func NewServer(logger log.Logger, xds XDSClient, isProxy isProxyFn, trigger func(string)) *Server {
 	s := &Server{
-		xds:         xds,
-		logger:      logger,
-		pendingConn: make(map[uint32]map[string]net.Conn),
-		triggerFn:   trigger,
-		isProxyFn:   isProxy,
+		xdsClient: xds,
+		logger:    logger,
+		pending:   make(map[uint32][]net.Conn),
+		triggerFn: trigger,
+		isProxyFn: isProxy,
 	}
-	s.xds.OnUpdated(s.onXDSUpdated)
+	s.xdsClient.OnUpdated(s.onXDSUpdated)
 	return s
 }
 
 type Server struct {
-	logger      log.Logger
-	pendingConn map[uint32]map[string]net.Conn
-	mu          sync.Mutex
-	xds         XDS
-	isProxyFn   isProxyFn
-	triggerFn   func(string)
+	mu        sync.Mutex
+	logger    log.Logger
+	pending   map[uint32][]net.Conn
+	xdsClient XDSClient
+	isProxyFn isProxyFn
+	triggerFn func(string)
 }
 
 func (s *Server) Serve(ln net.Listener) error {
@@ -40,32 +40,30 @@ func (s *Server) Serve(ln net.Listener) error {
 }
 
 func (s *Server) handleConn(conn net.Conn) {
-	p := port(conn.LocalAddr())
-	ces := s.xds.GetIntendedEndpoints(p)
-	if len(ces.Endpoints) == 0 {
+	port := addrPort(conn.LocalAddr())
+	cluster := s.xdsClient.GetCluster(port)
+	if len(cluster.Endpoints) == 0 {
 		conn.Close()
 		return
 	}
 
-	others := exclude(ces.Endpoints, s.isProxyFn)
+	others := exclude(cluster.Endpoints, s.isProxyFn)
 	if len(others) == 0 {
-		s.pending(p, conn)
-		go s.trigger(ces.Cluster)
+		s.holding(port, conn)
+		go s.trigger(cluster.Name)
 		return
 	}
 
-	endpoint := others[rand.Intn(len(others))]
-	s.redirect(endpoint, conn)
+	s.redirect(others[rand.Intn(len(others))], conn)
 }
 
-func (s *Server) pending(port uint32, conn net.Conn) {
+func (s *Server) holding(port uint32, conn net.Conn) {
 	s.mu.Lock()
-	m, ok := s.pendingConn[port]
+	pending, ok := s.pending[port]
 	if !ok {
-		m = make(map[string]net.Conn)
-		s.pendingConn[port] = m
+		pending = make([]net.Conn, 0, 10)
 	}
-	m[conn.RemoteAddr().String()] = conn
+	s.pending[port] = append(pending, conn)
 	s.mu.Unlock()
 }
 
@@ -92,21 +90,21 @@ func (s *Server) trigger(cluster string) {
 func (s *Server) onXDSUpdated(port uint32) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if n, ok := s.pendingConn[port]; ok && len(n) > 0 {
-		ces := s.xds.GetIntendedEndpoints(port)
+	if n, ok := s.pending[port]; ok && len(n) > 0 {
+		ces := s.xdsClient.GetCluster(port)
 		if len(ces.Endpoints) == 0 {
-			for k, conn := range n {
-				delete(n, k)
+			for _, conn := range n {
 				go conn.Close()
 			}
+			delete(s.pending, port)
 			return
 		}
 		others := exclude(ces.Endpoints, s.isProxyFn)
 		if len(others) != 0 {
-			for k, conn := range n {
-				delete(n, k)
+			for _, conn := range n {
 				go s.redirect(others[rand.Intn(len(others))], conn)
 			}
+			delete(s.pending, port)
 		}
 	}
 }
@@ -121,7 +119,7 @@ func exclude(in []string, fn func(string) bool) []string {
 	return out
 }
 
-func port(addr net.Addr) uint32 {
+func addrPort(addr net.Addr) uint32 {
 	if addr, ok := addr.(*net.TCPAddr); ok {
 		return uint32(addr.Port)
 	}

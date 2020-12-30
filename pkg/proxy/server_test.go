@@ -69,7 +69,7 @@ func TestDirectRedirect(t *testing.T) {
 	suite := setup(t)
 	defer suite.Close()
 
-	suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), ClusterEndpoints{
+	suite.store.SetCluster(addrPort(suite.serverLn.Addr()), Cluster{
 		Endpoints: []string{
 			suite.serverLn.Addr().String(),
 			suite.targetLn.Addr().String(),
@@ -86,14 +86,14 @@ func TestPendingRedirect(t *testing.T) {
 	suite := setup(t)
 	defer suite.Close()
 
-	suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), ClusterEndpoints{
+	suite.store.SetCluster(addrPort(suite.serverLn.Addr()), Cluster{
 		Endpoints: []string{
 			suite.serverLn.Addr().String(),
 		},
 	})
 	go func() {
 		time.Sleep(time.Second / 2)
-		suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), ClusterEndpoints{
+		suite.store.SetCluster(addrPort(suite.serverLn.Addr()), Cluster{
 			Endpoints: []string{
 				suite.serverLn.Addr().String(),
 				suite.targetLn.Addr().String(),
@@ -111,14 +111,14 @@ func TestPendingClose(t *testing.T) {
 	suite := setup(t)
 	defer suite.Close()
 
-	suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), ClusterEndpoints{
+	suite.store.SetCluster(addrPort(suite.serverLn.Addr()), Cluster{
 		Endpoints: []string{
 			suite.serverLn.Addr().String(),
 		},
 	})
 	go func() {
 		time.Sleep(time.Second / 2)
-		suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), ClusterEndpoints{})
+		suite.store.SetCluster(addrPort(suite.serverLn.Addr()), Cluster{})
 	}()
 
 	resp, err := http.Get("http://" + suite.serverLn.Addr().String())
@@ -131,7 +131,7 @@ func TestDynamicRedirect(t *testing.T) {
 	suite := setup(t)
 	defer suite.Close()
 
-	suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), ClusterEndpoints{
+	suite.store.SetCluster(addrPort(suite.serverLn.Addr()), Cluster{
 		Endpoints: []string{
 			suite.serverLn.Addr().String(),
 		},
@@ -140,13 +140,13 @@ func TestDynamicRedirect(t *testing.T) {
 	stop := make(chan struct{})
 	go func() {
 		for i := 0; i < 10; i++ {
-			suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), ClusterEndpoints{
+			suite.store.SetCluster(addrPort(suite.serverLn.Addr()), Cluster{
 				Endpoints: []string{
 					suite.serverLn.Addr().String(),
 				},
 			})
 			time.Sleep(time.Second / 10)
-			suite.store.SetIntendedEndpoints(port(suite.serverLn.Addr()), ClusterEndpoints{
+			suite.store.SetCluster(addrPort(suite.serverLn.Addr()), Cluster{
 				Endpoints: []string{
 					suite.serverLn.Addr().String(),
 					suite.targetLn.Addr().String(),
