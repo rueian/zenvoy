@@ -4,8 +4,8 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
+	"github.com/rueian/zenvoy/pkg/config"
 	"github.com/rueian/zenvoy/pkg/logger"
 	"github.com/rueian/zenvoy/pkg/proxy"
 	"golang.org/x/sync/singleflight"
@@ -17,36 +17,21 @@ import (
 	"time"
 )
 
-var (
-	l          *logger.Std
-	port       uint
-	xdsAddr    string
-	nodeID     string
-	triggerURL string
-)
-
-func init() {
-	l = &logger.Std{}
-
-	flag.BoolVar(&l.Debug, "debug", false, "Enable xDS server debug logging")
-
-	flag.UintVar(&port, "port", 20000, "proxy server port")
-
-	flag.StringVar(&nodeID, "nodeID", "zenvoy", "Node ID")
-
-	flag.StringVar(&xdsAddr, "xds", "xds:18000", "xds server addr")
-
-	flag.StringVar(&triggerURL, "triggerURL", "http://xds:17999", "trigger to scale")
-}
+var l = &logger.Std{}
 
 func main() {
+	conf, err := config.GetProxy()
+	if err != nil {
+		l.Fatalf("config error %+v", err)
+	}
+
 	lc := net.ListenConfig{Control: SetSocketOptions}
-	lis, err := lc.Listen(context.Background(), "tcp", fmt.Sprintf(":%d", port))
+	lis, err := lc.Listen(context.Background(), "tcp", fmt.Sprintf(":%d", conf.ProxyPort))
 	if err != nil {
 		l.Fatalf("listen error %+v", err)
 	}
 
-	conn, err := grpc.Dial(xdsAddr, grpc.WithInsecure())
+	conn, err := grpc.Dial(conf.XDSAddr, grpc.WithInsecure())
 	if err != nil {
 		l.Fatalf("grpc dial error %+v", err)
 	}
@@ -60,10 +45,10 @@ func main() {
 
 	sg := singleflight.Group{}
 
-	xdsClient := proxy.NewXDSClient(l, conn, nodeID, isProxy)
+	xdsClient := proxy.NewXDSClient(l, conn, conf.XDSNodeID, isProxy)
 	server := proxy.NewServer(l, xdsClient, isProxy, func(cluster string) {
 		sg.Do(cluster, func() (interface{}, error) {
-			resp, err := http.Get(triggerURL)
+			resp, err := http.Get(conf.TriggerURL)
 			if err != nil {
 				l.Errorf("trigger error %+v", err)
 			}
