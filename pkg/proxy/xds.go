@@ -182,9 +182,6 @@ func changed(prev, now []string) bool {
 	if len(prev) != len(now) {
 		return true
 	}
-	if len(prev) != len(now) {
-		return true
-	}
 	m := make(map[string]bool, len(prev))
 	for _, p := range prev {
 		m[p] = true
