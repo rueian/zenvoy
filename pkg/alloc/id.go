@@ -26,7 +26,7 @@ func (i *ID) Acquire() (uint32, error) {
 			return id, nil
 		}
 	}
-	return 0, errors.New("no free id")
+	return 0, ErrNoFreeID
 }
 
 func (i *ID) Release(id uint32) {
@@ -35,3 +35,5 @@ func (i *ID) Release(id uint32) {
 		i.next = id
 	}
 }
+
+var ErrNoFreeID = errors.New("no free id")
