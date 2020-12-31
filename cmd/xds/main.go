@@ -26,7 +26,7 @@ func main() {
 
 	server := xds.NewServer(l, conf.XDSNodeID, xds.Debug(l.Debug))
 
-	manager, err := kube.NewManager()
+	manager, err := kube.NewManager(conf.KubeNamespace)
 	if err != nil {
 		l.Fatalf("manager error %+v", err)
 	}
@@ -52,7 +52,7 @@ func main() {
 	go func() {
 		http.ListenAndServe(fmt.Sprintf(":%d", conf.TriggerPort), http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 			if deploy := request.URL.Query().Get("deployment"); deploy != "" {
-				if err := scaler.Scale(context.Background(), "default", deploy); err != nil {
+				if err := scaler.Scale(context.Background(), conf.KubeNamespace, deploy); err != nil {
 					l.Errorf("fail to scale deployment %s %+v", deploy, err)
 				}
 			}

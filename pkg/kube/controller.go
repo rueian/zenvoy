@@ -26,12 +26,12 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 }
 
-func NewManager() (manager.Manager, error) {
+func NewManager(namespace string) (manager.Manager, error) {
 	conf, err := config.GetConfig()
 	if err != nil {
 		return nil, err
 	}
-	return manager.New(conf, manager.Options{Scheme: scheme})
+	return manager.New(conf, manager.Options{Scheme: scheme, Namespace: namespace})
 }
 
 func SetupEndpointController(mgr manager.Manager, proxyIP string, snapshot *xds.Snapshot, idAlloc *alloc.ID) error {
@@ -43,7 +43,8 @@ func SetupEndpointController(mgr manager.Manager, proxyIP string, snapshot *xds.
 		proxyIP:  proxyIP,
 	}
 	return builder.ControllerManagedBy(mgr).
-		For(&v1.Endpoints{}).Complete(controller)
+		For(&v1.Endpoints{}).
+		Complete(controller)
 }
 
 type EndpointController struct {
