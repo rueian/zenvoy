@@ -66,6 +66,7 @@ func (c *EndpointController) Reconcile(ctx context.Context, req reconcile.Reques
 			if ok {
 				c.idAlloc.Release(port)
 			}
+			c.snapshot.RemoveClusterRoute(req.Name)
 			c.snapshot.RemoveClusterEndpoints(req.Name)
 			c.snapshot.RemoveCluster(req.Name)
 			return reconcile.Result{}, nil
@@ -104,6 +105,7 @@ func (c *EndpointController) Reconcile(ctx context.Context, req reconcile.Reques
 	}
 
 	c.snapshot.SetCluster(req.Name)
+	c.snapshot.SetClusterRoute(req.Name, req.Name, "")
 	c.snapshot.SetClusterEndpoints(req.Name, available...)
 	return reconcile.Result{}, nil
 }
