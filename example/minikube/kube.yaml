@@ -60,7 +60,7 @@ spec:
             - containerPort: 18001
         - name: envoy
           image: envoyproxy/envoy:v1.16.0
-          imagePullPolicy: Always
+          imagePullPolicy: Never
           ports:
             - containerPort: 10000
             - containerPort: 10001
@@ -116,7 +116,7 @@ spec:
       containers:
         - name: echo
           image: rueian/zenvoy-echo:latest
-          imagePullPolicy: Always
+          imagePullPolicy: Never
           ports:
             - containerPort: 8080
 ---
