@@ -32,9 +32,9 @@ func main() {
 	}
 	l.Infof("proxy ip identifier: %s", ip)
 
-	out, err := tproxy.Setup(ip, conf.ProxyPort, conf.ProxyPortMin, conf.ProxyPortMax)
+	out, err := tproxy.Setup(conf.TPROXYCMD, ip, conf.ProxyPort, conf.ProxyPortMin, conf.ProxyPortMax)
 	if err != nil {
-		l.Fatalf("tproxy error %+v: %s", err, out)
+		l.Fatalf("%s tproxy error %+v: %s", conf.TPROXYCMD, err, out)
 	}
 	l.Infof("set tproxy for %s:%d-%d to :%d", ip, conf.ProxyPortMin, conf.ProxyPortMax, conf.ProxyPort)
 

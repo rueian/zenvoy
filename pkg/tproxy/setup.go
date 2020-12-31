@@ -4,9 +4,16 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 )
 
-func Setup(ip string, port, portMin, portMax uint32) (out []byte, err error) {
+func Setup(cmd, ip string, port, portMin, portMax uint32) (out []byte, err error) {
+	if cmd == "iptables" {
+		return run("iptables", strings.Split(fmt.Sprintf(
+			"-t mangle -I PREROUTING -d %s -p tcp --dport %d:%d -j TPROXY --on-port=%d", ip, portMin, portMax, port,
+		), " ")...)
+	}
+
 	out, err = run("nft", "add table ip zenvoy")
 	if err == nil {
 		out, err = run("nft", `add chain ip zenvoy proxy { type filter hook prerouting priority 0 ; }`)
