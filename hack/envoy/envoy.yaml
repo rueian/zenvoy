@@ -40,5 +40,5 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: xds
+                      address: zenvoy-xds
                       port_value: 18000
