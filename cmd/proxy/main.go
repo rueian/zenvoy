@@ -61,7 +61,7 @@ func main() {
 	xdsClient := proxy.NewXDSClient(l, conn, conf.XDSNodeID, isProxy)
 	server := proxy.NewServer(l, xdsClient, isProxy, func(cluster string) {
 		sg.Do(cluster, func() (interface{}, error) {
-			resp, err := http.Get(conf.TriggerURL)
+			resp, err := http.Get(conf.TriggerURL + "?deployment=" + cluster)
 			if err != nil {
 				l.Errorf("trigger error %+v", err)
 			}
