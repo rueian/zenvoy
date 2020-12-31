@@ -1,0 +1,224 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: xds
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: xds
+rules:
+  - apiGroups: [ "" ]
+    resources: [ "endpoints" ]
+    verbs: [ "get", "list", "watch" ]
+  - apiGroups: [ "apps" ]
+    resources: [ "deployments/scale" ]
+    verbs: [ "get", "update" ]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: xds
+subjects:
+  - kind: ServiceAccount
+    name: xds
+roleRef:
+  kind: Role
+  name: xds
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zenvoy-proxy
+  labels:
+    app: zenvoy-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zenvoy-proxy
+  template:
+    metadata:
+      labels:
+        app: zenvoy-proxy
+    spec:
+      containers:
+        - name: proxy
+          image: rueian/zenvoy-proxy:latest
+          imagePullPolicy: Always
+          securityContext:
+            capabilities:
+              add: [ "NET_ADMIN" ]
+          env:
+            - name: XDS_ADDR
+              value: zenvoy-xds:18000
+            - name: TRIGGER_URL
+              value: http://zenvoy-xds:17999
+          ports:
+            - containerPort: 18001
+        - name: envoy
+          image: envoyproxy/envoy:v1.16.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 10000
+            - containerPort: 10001
+          volumeMounts:
+            - name: envoy-config
+              mountPath: /etc/envoy
+      volumes:
+        - name: envoy-config
+          configMap:
+            name: envoy
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zenvoy-xds
+  labels:
+    app: zenvoy-xds
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zenvoy-xds
+  template:
+    metadata:
+      labels:
+        app: zenvoy-xds
+    spec:
+      serviceAccountName: xds
+      containers:
+        - name: xds
+          image: rueian/zenvoy-xds:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 17999
+            - containerPort: 18000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zenvoy-echo
+  labels:
+    app: zenvoy-echo
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: zenvoy-echo
+  template:
+    metadata:
+      labels:
+        app: zenvoy-echo
+    spec:
+      containers:
+        - name: echo
+          image: rueian/zenvoy-echo:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zenvoy-proxy
+spec:
+  type: ClusterIP
+  selector:
+    app: zenvoy-proxy
+  ports:
+    - protocol: TCP
+      name: http
+      port: 10000
+      targetPort: 10000
+    - protocol: TCP
+      name: admin
+      port: 10001
+      targetPort: 10001
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zenvoy-xds
+spec:
+  type: ClusterIP
+  selector:
+    app: zenvoy-xds
+  ports:
+    - protocol: TCP
+      name: tcp
+      port: 18000
+      targetPort: 18000
+    - protocol: TCP
+      name: http
+      port: 17999
+      targetPort: 17999
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zenvoy-echo
+spec:
+  type: ClusterIP
+  selector:
+    app: zenvoy-echo
+  ports:
+    - protocol: TCP
+      name: http
+      port: 8080
+      targetPort: 8080
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: envoy
+data:
+  envoy.yaml: |
+    admin:
+      access_log_path: /dev/null
+      address:
+        socket_address: { address: 0.0.0.0, port_value: 10001 }
+
+    dynamic_resources:
+      ads_config:
+        api_type: GRPC
+        transport_api_version: V3
+        grpc_services:
+          envoy_grpc:
+            cluster_name: xds_cluster
+      lds_config:
+        resource_api_version: V3
+        ads: {}
+      cds_config:
+        resource_api_version: V3
+        ads: {}
+
+    node:
+      cluster: zenvoy-cluster
+      id: zenvoy
+
+    static_resources:
+      clusters:
+        - name: xds_cluster
+          connect_timeout: 0.25s
+          type: STRICT_DNS
+          lb_policy: ROUND_ROBIN
+          http2_protocol_options:
+            # Configure an HTTP/2 keep-alive to detect connection issues and reconnect
+            # to the admin server if the connection is no longer responsive.
+            connection_keepalive:
+              interval: 30s
+              timeout: 5s
+          load_assignment:
+            cluster_name: xds_cluster
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address:
+                          address: zenvoy-xds
+                          port_value: 18000

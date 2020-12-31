@@ -62,6 +62,9 @@ func (c *EndpointController) Reconcile(ctx context.Context, req reconcile.Reques
 		if apierrors.IsNotFound(err) {
 			c.mu.Lock()
 			port, ok := c.portMap[req.Name]
+			if ok {
+				delete(c.portMap, req.Name)
+			}
 			c.mu.Unlock()
 			if ok {
 				c.idAlloc.Release(port)
@@ -91,13 +94,15 @@ func (c *EndpointController) Reconcile(ctx context.Context, req reconcile.Reques
 	}
 
 	if len(available) == 0 {
-		port, err := c.idAlloc.Acquire()
-		if err != nil {
-			return reconcile.Result{Requeue: true}, nil
-		}
 		c.mu.Lock()
-		c.portMap[req.Name] = port
+		port, ok := c.portMap[req.Name]
 		c.mu.Unlock()
+		if !ok {
+			var err error
+			if port, err = c.idAlloc.Acquire(); err != nil {
+				return reconcile.Result{Requeue: true}, nil
+			}
+		}
 		available = append(available, xds.Endpoint{
 			IP:   c.proxyIP,
 			Port: port,

@@ -1,4 +1,4 @@
 
 ```
-./dockerbuild.sh
+kubectl apply -f example/minikube/kube.yaml
 ```
