@@ -26,10 +26,14 @@ func main() {
 		l.Fatalf("config error %+v", err)
 	}
 
-	err = SetupTPROXY(conf.ProxyPort, conf.ProxyPortMin, conf.ProxyPortMax)
+	ip := GetNonLoopbackIP()
+	l.Infof("proxy ip identifier: %s", ip)
+
+	_, err = tproxy.Setup(ip, conf.ProxyPort, conf.ProxyPortMin, conf.ProxyPortMax)
 	if err != nil {
 		l.Fatalf("tproxy error %+v", err)
 	}
+	l.Infof("set tproxy for %s:%d-%d to :%d", ip, conf.ProxyPortMin, conf.ProxyPortMax, conf.ProxyPort)
 
 	lc := net.ListenConfig{Control: SetSocketOptions}
 	lis, err := lc.Listen(context.Background(), "tcp", fmt.Sprintf(":%d", conf.ProxyPort))
@@ -44,9 +48,6 @@ func main() {
 		l.Fatalf("grpc dial error %+v", err)
 	}
 	defer conn.Close()
-
-	ip := GetNonLoopbackIP()
-	l.Infof("proxy ip identifier: %s", ip)
 
 	isProxy := func(addr string) bool {
 		return strings.HasPrefix(addr, ip)
@@ -100,23 +101,4 @@ func GetNonLoopbackIP() string {
 		}
 	}
 	return ""
-}
-
-func SetupTPROXY(port, portMin, portMax uint32) error {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return err
-	}
-	for _, address := range addrs {
-		if ipnet, ok := address.(*net.IPNet); ok {
-			if ipnet.IP.To4() != nil {
-				_, err = tproxy.Setup(ipnet.IP.String(), port, portMin, portMax)
-				if err != nil {
-					return err
-				}
-				l.Infof("set tproxy for %s:%d-%d", ipnet.IP.String(), portMin, portMax)
-			}
-		}
-	}
-	return nil
 }
