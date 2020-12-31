@@ -6,6 +6,8 @@ services:
     build:
       context: .
       target: xds
+    environment:
+      PROXY_ADDR: proxy
     ports:
       - 18000:18000
     depends_on:
@@ -15,6 +17,8 @@ services:
     build:
       context: .
       target: proxy
+    environment:
+      PROXY_ADDR:
     cap_add:
       - NET_ADMIN
     ports:

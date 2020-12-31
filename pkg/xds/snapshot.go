@@ -65,8 +65,8 @@ func (s *Snapshot) RemoveClusterRoute(name string) error {
 	return s.setSnapshot()
 }
 
-func (s *Snapshot) SetClusterEndpoints(name string, port uint32, hosts ...string) error {
-	endpoints := makeEndpoints(name, port, hosts...)
+func (s *Snapshot) SetClusterEndpoints(name string, eps ...Endpoint) error {
+	endpoints := makeEndpoints(name, eps...)
 	if original, ok := s.eds[name]; ok && proto.Equal(original, endpoints) {
 		return nil
 	}

@@ -26,7 +26,10 @@ func main() {
 		l.Fatalf("config error %+v", err)
 	}
 
-	ip := GetNonLoopbackIP()
+	ip := conf.ProxyAddr
+	if ip == "" {
+		ip = GetNonLoopbackIP()
+	}
 	l.Infof("proxy ip identifier: %s", ip)
 
 	out, err := tproxy.Setup(ip, conf.ProxyPort, conf.ProxyPortMin, conf.ProxyPortMax)

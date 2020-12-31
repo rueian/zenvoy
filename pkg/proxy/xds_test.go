@@ -61,7 +61,7 @@ func TestNewXDSClient(t *testing.T) {
 			err = suite.server.RemoveCluster(test.ClusterName)
 		} else {
 			err = suite.server.SetCluster(test.ClusterName)
-			err = suite.server.SetClusterEndpoints(test.ClusterName, test.EndpointPort, test.Hosts...)
+			err = suite.server.SetClusterEndpoints(test.ClusterName, endpoints(test.EndpointPort, test.Hosts)...)
 		}
 		if err != nil {
 			t.Fatalf("xds error %v", err)
@@ -121,4 +121,12 @@ func setupXDS(t *testing.T) *XDSSuite {
 		proxyHost: proxyHost,
 		cancel:    cancel,
 	}
+}
+
+func endpoints(port uint32, hosts []string) []xds.Endpoint {
+	out := make([]xds.Endpoint, len(hosts))
+	for i, host := range hosts {
+		out[i] = xds.Endpoint{IP: host, Port: port}
+	}
+	return out
 }

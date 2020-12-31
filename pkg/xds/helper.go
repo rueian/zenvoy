@@ -11,6 +11,7 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"github.com/golang/protobuf/ptypes"
 	"net"
+	"sort"
 	"time"
 )
 
@@ -19,6 +20,11 @@ const (
 	ListenerName = "listener_0"
 	ListenerPort = 10000
 )
+
+type Endpoint struct {
+	IP   string
+	Port uint32
+}
 
 func makeCluster(clusterName string) *cluster.Cluster {
 	return &cluster.Cluster{
@@ -33,12 +39,15 @@ func makeCluster(clusterName string) *cluster.Cluster {
 	}
 }
 
-func makeEndpoints(clusterName string, port uint32, hosts ...string) *endpoint.ClusterLoadAssignment {
-	endpoints := make([]*endpoint.LbEndpoint, 0, len(hosts))
-	for _, host := range hosts {
-		ip := net.ParseIP(host)
+func makeEndpoints(clusterName string, eps ...Endpoint) *endpoint.ClusterLoadAssignment {
+	sort.Slice(eps, func(i, j int) bool {
+		return eps[i].IP < eps[j].IP
+	})
+	endpoints := make([]*endpoint.LbEndpoint, 0, len(eps))
+	for _, ep := range eps {
+		ip := net.ParseIP(ep.IP)
 		if ip == nil {
-			ips, err := net.LookupIP(host)
+			ips, err := net.LookupIP(ep.IP)
 			if err != nil || len(ips) == 0 {
 				continue
 			}
@@ -53,7 +62,7 @@ func makeEndpoints(clusterName string, port uint32, hosts ...string) *endpoint.C
 								Protocol: core.SocketAddress_TCP,
 								Address:  ip.String(),
 								PortSpecifier: &core.SocketAddress_PortValue{
-									PortValue: port,
+									PortValue: ep.Port,
 								},
 							},
 						},
