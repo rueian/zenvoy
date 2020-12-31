@@ -10,7 +10,7 @@ RUN --mount=type=cache,target=/gobuildcache \
     ls cmd | xargs -I {} go build -o /{} cmd/{}/main.go
 
 FROM alpine:3.12 AS proxy
-RUN apk add --no-cache iptables
+RUN apk add --no-cache nftables
 COPY --from=build /proxy /
 ENTRYPOINT ["/proxy"]
 
