@@ -15,7 +15,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"strings"
-	"sync"
 )
 
 var (
@@ -34,12 +33,11 @@ func NewManager(namespace string) (manager.Manager, error) {
 	return manager.New(conf, manager.Options{Scheme: scheme, Namespace: namespace})
 }
 
-func SetupEndpointController(mgr manager.Manager, proxyIP string, snapshot *xds.Snapshot, idAlloc *alloc.ID) error {
+func SetupEndpointController(mgr manager.Manager, snapshot *xds.Snapshot, proxyIP string, portMin, portMax uint32) error {
 	controller := &EndpointController{
 		Client:   mgr.GetClient(),
 		snapshot: snapshot,
-		idAlloc:  idAlloc,
-		portMap:  make(map[string]uint32),
+		portsMap: alloc.NewKeys(portMin, portMax),
 		proxyIP:  proxyIP,
 	}
 	return builder.ControllerManagedBy(mgr).
@@ -50,9 +48,7 @@ func SetupEndpointController(mgr manager.Manager, proxyIP string, snapshot *xds.
 type EndpointController struct {
 	client.Client
 	snapshot *xds.Snapshot
-	idAlloc  *alloc.ID
-	portMap  map[string]uint32
-	mu       sync.Mutex
+	portsMap *alloc.Keys
 	proxyIP  string
 }
 
@@ -60,15 +56,7 @@ func (c *EndpointController) Reconcile(ctx context.Context, req reconcile.Reques
 	endpoints := &v1.Endpoints{}
 	if err := c.Get(ctx, req.NamespacedName, endpoints); err != nil {
 		if apierrors.IsNotFound(err) {
-			c.mu.Lock()
-			port, ok := c.portMap[req.Name]
-			if ok {
-				delete(c.portMap, req.Name)
-			}
-			c.mu.Unlock()
-			if ok {
-				c.idAlloc.Release(port)
-			}
+			c.portsMap.Release(req.Name)
 			c.snapshot.RemoveClusterRoute(req.Name)
 			c.snapshot.RemoveClusterEndpoints(req.Name)
 			c.snapshot.RemoveCluster(req.Name)
@@ -78,35 +66,20 @@ func (c *EndpointController) Reconcile(ctx context.Context, req reconcile.Reques
 		}
 	}
 
-	count := 0
-	for _, sub := range endpoints.Subsets {
-		count += len(sub.Addresses)
-	}
-	available := make([]xds.Endpoint, 0, count)
+	var available []xds.Endpoint
 	for _, sub := range endpoints.Subsets {
 		port := c.findEndpointPort(endpoints, sub)
 		for _, addr := range sub.Addresses {
-			available = append(available, xds.Endpoint{
-				IP:   addr.IP,
-				Port: uint32(port),
-			})
+			available = append(available, xds.Endpoint{IP: addr.IP, Port: uint32(port)})
 		}
 	}
 
 	if len(available) == 0 {
-		c.mu.Lock()
-		port, ok := c.portMap[req.Name]
-		c.mu.Unlock()
-		if !ok {
-			var err error
-			if port, err = c.idAlloc.Acquire(); err != nil {
-				return reconcile.Result{Requeue: true}, nil
-			}
+		port, err := c.portsMap.Acquire(req.Name)
+		if err != nil {
+			return reconcile.Result{Requeue: true}, nil
 		}
-		available = append(available, xds.Endpoint{
-			IP:   c.proxyIP,
-			Port: port,
-		})
+		available = append(available, xds.Endpoint{IP: c.proxyIP, Port: port})
 	}
 
 	c.snapshot.SetCluster(req.Name)
@@ -116,6 +89,9 @@ func (c *EndpointController) Reconcile(ctx context.Context, req reconcile.Reques
 }
 
 func (c *EndpointController) findEndpointPort(endpoints *v1.Endpoints, subset v1.EndpointSubset) int32 {
+	if len(subset.Ports) == 1 {
+		return subset.Ports[0].Port
+	}
 	for _, port := range subset.Ports {
 		switch strings.ToLower(port.Name) {
 		case "http", "https", "http2", "tcp":
@@ -127,9 +103,6 @@ func (c *EndpointController) findEndpointPort(endpoints *v1.Endpoints, subset v1
 		case "TCP":
 			return port.Port
 		}
-	}
-	if len(subset.Ports) != 0 {
-		return subset.Ports[0].Port
 	}
 	return 0
 }

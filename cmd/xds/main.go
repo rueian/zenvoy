@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/rueian/zenvoy/pkg/alloc"
 	"github.com/rueian/zenvoy/pkg/config"
 	"github.com/rueian/zenvoy/pkg/kube"
 	"github.com/rueian/zenvoy/pkg/logger"
@@ -36,8 +35,7 @@ func main() {
 		l.Fatalf("clientset error %+v", err)
 	}
 
-	idAlloc := alloc.NewID(conf.ProxyPortMin, conf.ProxyPortMax)
-	if err = kube.SetupEndpointController(manager, conf.ProxyAddr, server.Snapshot, idAlloc); err != nil {
+	if err = kube.SetupEndpointController(manager, server.Snapshot, conf.ProxyAddr, conf.ProxyPortMin, conf.ProxyPortMax); err != nil {
 		l.Fatalf("controller error %+v", err)
 	}
 
