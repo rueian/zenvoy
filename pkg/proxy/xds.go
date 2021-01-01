@@ -14,11 +14,14 @@ import (
 
 type XDSClient interface {
 	GetCluster(port uint32) Cluster
-	OnUpdated(func(port uint32))
+	OnUpdated(func(Cluster, bool))
 }
 
 func NewStore() *store {
-	return &store{clusters: make(map[uint32]Cluster)}
+	return &store{
+		clusters: make(map[string]Cluster),
+		portMap:  make(map[uint32]string),
+	}
 }
 
 type Cluster struct {
@@ -27,31 +30,48 @@ type Cluster struct {
 }
 
 type store struct {
-	clusters map[uint32]Cluster
+	clusters map[string]Cluster
+	portMap  map[uint32]string
 	mu       sync.RWMutex
-	cb       []func(uint32)
+	cb       []func(Cluster, bool)
 }
 
 func (x *store) SetCluster(port uint32, cluster Cluster) {
 	x.mu.Lock()
-	if orig := x.clusters[port]; orig.Name == cluster.Name && !changed(orig.Endpoints, cluster.Endpoints) {
-		x.mu.Unlock()
-		return
+	if port != 0 {
+		x.portMap[port] = cluster.Name
 	}
-	x.clusters[port] = cluster
+	orig, ok := x.clusters[cluster.Name]
+	x.clusters[cluster.Name] = cluster
 	x.mu.Unlock()
-	for _, f := range x.cb {
-		f(port)
+
+	if !ok || (cluster.Name != "" && changed(orig.Endpoints, cluster.Endpoints)) {
+		for _, f := range x.cb {
+			f(cluster, false)
+		}
+	}
+}
+
+func (x *store) RemoveCluster(name string) {
+	x.mu.Lock()
+	cluster, ok := x.clusters[name]
+	delete(x.clusters, name)
+	x.mu.Unlock()
+
+	if ok && cluster.Name != "" {
+		for _, f := range x.cb {
+			f(cluster, true)
+		}
 	}
 }
 
 func (x *store) GetCluster(port uint32) Cluster {
 	x.mu.RLock()
 	defer x.mu.RUnlock()
-	return x.clusters[port]
+	return x.clusters[x.portMap[port]]
 }
 
-func (x *store) OnUpdated(f func(port uint32)) {
+func (x *store) OnUpdated(f func(Cluster, bool)) {
 	x.cb = append(x.cb, f)
 }
 
@@ -61,7 +81,6 @@ func NewXDSClient(logger log.Logger, conn *grpc.ClientConn, nodeID string, isPro
 		grpcConn: conn,
 		nodeID:   nodeID,
 		logger:   logger,
-		clusters: make(map[string]uint32),
 		isProxy:  isProxy,
 	}
 }
@@ -74,7 +93,7 @@ type Client struct {
 	logger   log.Logger
 	nodeID   string
 	isProxy  isProxyFn
-	clusters map[string]uint32
+	clusters []string
 	grpcConn *grpc.ClientConn
 }
 
@@ -99,8 +118,6 @@ func (c *Client) Listen(ctx context.Context) error {
 		Node:    &corev3.Node{Id: c.nodeID},
 		TypeUrl: typeCDS,
 	}
-
-	var previous []string
 
 	for {
 		in, err := stream.Recv()
@@ -129,9 +146,12 @@ func (c *Client) Listen(ctx context.Context) error {
 					current = append(current, cluster.Name)
 				}
 			}
-			if changed(previous, current) {
+			if removed, ok := missing(c.clusters, current); ok {
 				reqs = append(reqs, &discoverygrpc.DiscoveryRequest{ResourceNames: current, TypeUrl: typeEDS})
-				previous = current
+				c.clusters = current
+				for _, m := range removed {
+					c.store.RemoveCluster(m)
+				}
 			}
 			c.logger.Infof("receive xds clusters: ver=%s %v", in.VersionInfo, current)
 		case typeEDS:
@@ -142,6 +162,7 @@ func (c *Client) Listen(ctx context.Context) error {
 					continue
 				}
 				var intended []string
+				var proxyPort uint32
 				for _, endpoints := range cla.Endpoints {
 					for _, e := range endpoints.LbEndpoints {
 						if endpoint := e.GetEndpoint(); endpoint == nil {
@@ -149,19 +170,14 @@ func (c *Client) Listen(ctx context.Context) error {
 						} else if addr := endpoint.Address.GetSocketAddress(); addr != nil {
 							addrStr := fmt.Sprintf("%s:%d", addr.Address, addr.GetPortValue())
 							if c.isProxy(addrStr) {
-								if port, ok := c.clusters[cla.ClusterName]; ok && port != addr.GetPortValue() {
-									c.store.SetCluster(port, Cluster{})
-								}
-								c.clusters[cla.ClusterName] = addr.GetPortValue()
+								proxyPort = addr.GetPortValue()
 							} else {
 								intended = append(intended, addrStr)
 							}
 						}
 					}
 				}
-				if port, ok := c.clusters[cla.ClusterName]; ok {
-					c.store.SetCluster(port, Cluster{Name: cla.ClusterName, Endpoints: intended})
-				}
+				c.store.SetCluster(proxyPort, Cluster{Name: cla.ClusterName, Endpoints: intended})
 				c.logger.Infof("receive xds endpoints: ver=%s %s %v", in.VersionInfo, cla.ClusterName, intended)
 			}
 		}
@@ -170,6 +186,21 @@ func (c *Client) Listen(ctx context.Context) error {
 			requests <- req
 		}
 	}
+}
+
+func missing(prev, now []string) ([]string, bool) {
+	m := make(map[string]bool, len(prev))
+	for _, p := range prev {
+		m[p] = true
+	}
+	for _, n := range now {
+		delete(m, n)
+	}
+	remain := make([]string, 0, len(m))
+	for n := range m {
+		remain = append(remain, n)
+	}
+	return remain, len(remain) != 0 || len(prev) != len(now)
 }
 
 func changed(prev, now []string) bool {

@@ -12,7 +12,7 @@ func NewServer(logger log.Logger, xds XDSClient, trigger func(string)) *Server {
 	s := &Server{
 		xdsClient: xds,
 		logger:    logger,
-		pending:   make(map[uint32][]net.Conn),
+		pending:   make(map[string][]net.Conn),
 		triggerFn: trigger,
 	}
 	s.xdsClient.OnUpdated(s.onXDSUpdated)
@@ -22,7 +22,7 @@ func NewServer(logger log.Logger, xds XDSClient, trigger func(string)) *Server {
 type Server struct {
 	mu        sync.Mutex
 	logger    log.Logger
-	pending   map[uint32][]net.Conn
+	pending   map[string][]net.Conn
 	xdsClient XDSClient
 	triggerFn func(string)
 }
@@ -46,20 +46,20 @@ func (s *Server) handleConn(conn net.Conn) {
 	}
 
 	if endpoints := cluster.Endpoints; len(endpoints) == 0 {
-		s.holding(port, conn)
+		s.holding(cluster.Name, conn)
 		go s.trigger(cluster.Name)
 	} else {
 		s.redirect(endpoints[rand.Intn(len(endpoints))], conn)
 	}
 }
 
-func (s *Server) holding(port uint32, conn net.Conn) {
+func (s *Server) holding(cluster string, conn net.Conn) {
 	s.mu.Lock()
-	pending, ok := s.pending[port]
+	pending, ok := s.pending[cluster]
 	if !ok {
 		pending = make([]net.Conn, 0, 10)
 	}
-	s.pending[port] = append(pending, conn)
+	s.pending[cluster] = append(pending, conn)
 	s.mu.Unlock()
 }
 
@@ -83,20 +83,20 @@ func (s *Server) trigger(cluster string) {
 	}
 }
 
-func (s *Server) onXDSUpdated(port uint32) {
+func (s *Server) onXDSUpdated(cluster Cluster, deleted bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if n, ok := s.pending[port]; ok && len(n) > 0 {
-		if cluster := s.xdsClient.GetCluster(port); cluster.Name == "" {
+	if n, ok := s.pending[cluster.Name]; ok && len(n) > 0 {
+		if deleted {
 			for _, conn := range n {
 				go conn.Close()
 			}
-			delete(s.pending, port)
-		} else if endpoints := cluster.Endpoints; len(cluster.Endpoints) != 0 {
+			delete(s.pending, cluster.Name)
+		} else if endpoints := cluster.Endpoints; len(endpoints) != 0 {
 			for _, conn := range n {
 				go s.redirect(endpoints[rand.Intn(len(endpoints))], conn)
 			}
-			delete(s.pending, port)
+			delete(s.pending, cluster.Name)
 		}
 	}
 }

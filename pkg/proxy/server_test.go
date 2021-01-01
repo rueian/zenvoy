@@ -108,7 +108,7 @@ func TestPendingClose(t *testing.T) {
 	})
 	go func() {
 		time.Sleep(time.Second / 2)
-		suite.store.SetCluster(addrPort(suite.serverLn.Addr()), Cluster{})
+		suite.store.RemoveCluster("any")
 	}()
 
 	resp, err := http.Get("http://" + suite.serverLn.Addr().String())

@@ -36,7 +36,7 @@ func TestNewXDSClient(t *testing.T) {
 
 	updated := make(chan struct{})
 
-	suite.client.OnUpdated(func(port uint32) {
+	suite.client.OnUpdated(func(cluster Cluster, deleted bool) {
 		updated <- struct{}{}
 	})
 
@@ -54,7 +54,7 @@ func TestNewXDSClient(t *testing.T) {
 		{ClusterName: "2", ClusterBind: 2222, EndpointPort: 2222, Hosts: []string{suite.proxyHost}},
 		{ClusterName: "2", ClusterBind: 2222, EndpointPort: 3333, Hosts: []string{"3.3.3.3", "4.4.4.4"}},
 		{ClusterName: "2", ClusterBind: 2222, Delete: true},
-		{ClusterName: "1", ClusterBind: 1111, EndpointPort: 2222, Hosts: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"}},
+		{ClusterName: "1", ClusterBind: 1111, EndpointPort: 2222, Hosts: []string{"2.2.2.2", "3.3.3.3"}},
 		{ClusterName: "1", ClusterBind: 3333, EndpointPort: 3333, Hosts: []string{suite.proxyHost}},
 	} {
 		if test.Delete {
@@ -68,11 +68,11 @@ func TestNewXDSClient(t *testing.T) {
 			t.Fatalf("xds error %v", err)
 		}
 
+		<-updated
+
 		if test.Delete {
 			continue
 		}
-
-		<-updated
 
 		cluster := suite.client.GetCluster(test.ClusterBind)
 		if cluster.Name != test.ClusterName {
