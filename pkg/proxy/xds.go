@@ -130,12 +130,9 @@ func (c *Client) Listen(ctx context.Context) error {
 				}
 			}
 			if changed(previous, current) {
-				reqs = append(reqs, &discoverygrpc.DiscoveryRequest{
-					ResourceNames: current,
-					TypeUrl:       typeEDS,
-				})
+				reqs = append(reqs, &discoverygrpc.DiscoveryRequest{ResourceNames: current, TypeUrl: typeEDS})
+				previous = current
 			}
-			previous = current
 			c.logger.Infof("receive xds clusters: ver=%s %v", in.VersionInfo, current)
 		case typeEDS:
 			for _, res := range in.Resources {
@@ -149,7 +146,6 @@ func (c *Client) Listen(ctx context.Context) error {
 					for _, e := range endpoints.LbEndpoints {
 						if endpoint := e.GetEndpoint(); endpoint == nil {
 							c.logger.Errorf("fail to GetEndpoint() %s", typeEDS, e.String())
-							continue
 						} else if addr := endpoint.Address.GetSocketAddress(); addr != nil {
 							addrStr := fmt.Sprintf("%s:%d", addr.Address, addr.GetPortValue())
 							if c.isProxy(addrStr) {
@@ -157,16 +153,14 @@ func (c *Client) Listen(ctx context.Context) error {
 									c.store.SetCluster(port, Cluster{})
 								}
 								c.clusters[cla.ClusterName] = addr.GetPortValue()
+							} else {
+								intended = append(intended, addrStr)
 							}
-							intended = append(intended, addrStr)
 						}
 					}
 				}
 				if port, ok := c.clusters[cla.ClusterName]; ok {
-					c.store.SetCluster(port, Cluster{
-						Name:      cla.ClusterName,
-						Endpoints: intended,
-					})
+					c.store.SetCluster(port, Cluster{Name: cla.ClusterName, Endpoints: intended})
 				}
 				c.logger.Infof("receive xds endpoints: ver=%s %s %v", in.VersionInfo, cla.ClusterName, intended)
 			}

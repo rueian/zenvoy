@@ -12,12 +12,13 @@ import (
 )
 
 type XDSSuite struct {
-	ln     net.Listener
-	conn   *grpc.ClientConn
-	server *xds.Server
-	client *Client
-	nodeID string
-	cancel context.CancelFunc
+	ln      net.Listener
+	conn    *grpc.ClientConn
+	server  *xds.Server
+	client  *Client
+	nodeID  string
+	cancel  context.CancelFunc
+	isProxy isProxyFn
 
 	proxyHost string
 }
@@ -77,11 +78,12 @@ func TestNewXDSClient(t *testing.T) {
 		if cluster.Name != test.ClusterName {
 			t.Fatalf("expected cluster name %s, got %s", test.ClusterName, cluster.Name)
 		}
-		if len(cluster.Endpoints) != len(test.Hosts) {
-			t.Fatalf("expected endpoints len %d, got %d", len(test.Hosts), len(cluster.Endpoints))
+		expected := exclude(test.Hosts, suite.isProxy)
+		if len(cluster.Endpoints) != len(expected) {
+			t.Fatalf("expected endpoints len %d, got %d", len(expected), len(cluster.Endpoints))
 		}
 		for i, endpoint := range cluster.Endpoints {
-			if expect := fmt.Sprintf("%s:%d", test.Hosts[i], test.EndpointPort); endpoint != expect {
+			if expect := fmt.Sprintf("%s:%d", expected[i], test.EndpointPort); endpoint != expect {
 				t.Fatalf("expected endpint %s, got %v", expect, endpoint)
 			}
 		}
@@ -93,6 +95,9 @@ func setupXDS(t *testing.T) *XDSSuite {
 
 	nodeID := "test"
 	proxyHost := "127.0.0.1"
+	isProxy := func(s string) bool {
+		return strings.HasPrefix(s, proxyHost)
+	}
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -106,9 +111,7 @@ func setupXDS(t *testing.T) *XDSSuite {
 		t.Fatal(err)
 	}
 
-	client := NewXDSClient(l, conn, nodeID, func(s string) bool {
-		return strings.HasPrefix(s, proxyHost)
-	})
+	client := NewXDSClient(l, conn, nodeID, isProxy)
 	ctx, cancel := context.WithCancel(context.Background())
 	go client.Listen(ctx)
 
@@ -120,6 +123,7 @@ func setupXDS(t *testing.T) *XDSSuite {
 		nodeID:    nodeID,
 		proxyHost: proxyHost,
 		cancel:    cancel,
+		isProxy:   isProxy,
 	}
 }
 
@@ -127,6 +131,16 @@ func endpoints(port uint32, hosts []string) []xds.Endpoint {
 	out := make([]xds.Endpoint, len(hosts))
 	for i, host := range hosts {
 		out[i] = xds.Endpoint{IP: host, Port: port}
+	}
+	return out
+}
+
+func exclude(in []string, fn func(string) bool) []string {
+	out := make([]string, 0, len(in))
+	for _, i := range in {
+		if !fn(i) {
+			out = append(out, i)
+		}
 	}
 	return out
 }

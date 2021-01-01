@@ -59,7 +59,7 @@ func main() {
 	sg := singleflight.Group{}
 
 	xdsClient := proxy.NewXDSClient(l, conn, conf.XDSNodeID, isProxy)
-	server := proxy.NewServer(l, xdsClient, isProxy, func(cluster string) {
+	server := proxy.NewServer(l, xdsClient, func(cluster string) {
 		sg.Do(cluster, func() (interface{}, error) {
 			resp, err := http.Get(conf.TriggerURL + "?deployment=" + cluster)
 			if err != nil {

@@ -8,13 +8,12 @@ import (
 	"sync"
 )
 
-func NewServer(logger log.Logger, xds XDSClient, isProxy isProxyFn, trigger func(string)) *Server {
+func NewServer(logger log.Logger, xds XDSClient, trigger func(string)) *Server {
 	s := &Server{
 		xdsClient: xds,
 		logger:    logger,
 		pending:   make(map[uint32][]net.Conn),
 		triggerFn: trigger,
-		isProxyFn: isProxy,
 	}
 	s.xdsClient.OnUpdated(s.onXDSUpdated)
 	return s
@@ -25,7 +24,6 @@ type Server struct {
 	logger    log.Logger
 	pending   map[uint32][]net.Conn
 	xdsClient XDSClient
-	isProxyFn isProxyFn
 	triggerFn func(string)
 }
 
@@ -42,19 +40,17 @@ func (s *Server) Serve(ln net.Listener) error {
 func (s *Server) handleConn(conn net.Conn) {
 	port := addrPort(conn.LocalAddr())
 	cluster := s.xdsClient.GetCluster(port)
-	if len(cluster.Endpoints) == 0 {
+	if cluster.Name == "" {
 		conn.Close()
 		return
 	}
 
-	others := exclude(cluster.Endpoints, s.isProxyFn)
-	if len(others) == 0 {
+	if endpoints := cluster.Endpoints; len(endpoints) == 0 {
 		s.holding(port, conn)
 		go s.trigger(cluster.Name)
-		return
+	} else {
+		s.redirect(endpoints[rand.Intn(len(endpoints))], conn)
 	}
-
-	s.redirect(others[rand.Intn(len(others))], conn)
 }
 
 func (s *Server) holding(port uint32, conn net.Conn) {
@@ -91,32 +87,18 @@ func (s *Server) onXDSUpdated(port uint32) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if n, ok := s.pending[port]; ok && len(n) > 0 {
-		ces := s.xdsClient.GetCluster(port)
-		if len(ces.Endpoints) == 0 {
+		if cluster := s.xdsClient.GetCluster(port); cluster.Name == "" {
 			for _, conn := range n {
 				go conn.Close()
 			}
 			delete(s.pending, port)
-			return
-		}
-		others := exclude(ces.Endpoints, s.isProxyFn)
-		if len(others) != 0 {
+		} else if endpoints := cluster.Endpoints; len(cluster.Endpoints) != 0 {
 			for _, conn := range n {
-				go s.redirect(others[rand.Intn(len(others))], conn)
+				go s.redirect(endpoints[rand.Intn(len(endpoints))], conn)
 			}
 			delete(s.pending, port)
 		}
 	}
-}
-
-func exclude(in []string, fn func(string) bool) []string {
-	out := make([]string, 0, len(in))
-	for _, i := range in {
-		if !fn(i) {
-			out = append(out, i)
-		}
-	}
-	return out
 }
 
 func addrPort(addr net.Addr) uint32 {

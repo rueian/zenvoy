@@ -35,9 +35,7 @@ func setup(t *testing.T) *ServerSuite {
 	triggers := 0
 
 	store := NewStore()
-	server := NewServer(&logger.Std{}, store, func(s string) bool {
-		return s == ln1.Addr().String()
-	}, func(s string) {
+	server := NewServer(&logger.Std{}, store, func(s string) {
 		triggers++
 	})
 
@@ -70,10 +68,8 @@ func TestDirectRedirect(t *testing.T) {
 	defer suite.Close()
 
 	suite.store.SetCluster(addrPort(suite.serverLn.Addr()), Cluster{
-		Endpoints: []string{
-			suite.serverLn.Addr().String(),
-			suite.targetLn.Addr().String(),
-		},
+		Name:      "any",
+		Endpoints: []string{suite.targetLn.Addr().String()},
 	})
 
 	resp, err := http.Get("http://" + suite.serverLn.Addr().String())
@@ -87,17 +83,13 @@ func TestPendingRedirect(t *testing.T) {
 	defer suite.Close()
 
 	suite.store.SetCluster(addrPort(suite.serverLn.Addr()), Cluster{
-		Endpoints: []string{
-			suite.serverLn.Addr().String(),
-		},
+		Name: "any",
 	})
 	go func() {
 		time.Sleep(time.Second / 2)
 		suite.store.SetCluster(addrPort(suite.serverLn.Addr()), Cluster{
-			Endpoints: []string{
-				suite.serverLn.Addr().String(),
-				suite.targetLn.Addr().String(),
-			},
+			Name:      "any",
+			Endpoints: []string{suite.targetLn.Addr().String()},
 		})
 	}()
 
@@ -112,9 +104,7 @@ func TestPendingClose(t *testing.T) {
 	defer suite.Close()
 
 	suite.store.SetCluster(addrPort(suite.serverLn.Addr()), Cluster{
-		Endpoints: []string{
-			suite.serverLn.Addr().String(),
-		},
+		Name: "any",
 	})
 	go func() {
 		time.Sleep(time.Second / 2)
@@ -132,25 +122,19 @@ func TestDynamicRedirect(t *testing.T) {
 	defer suite.Close()
 
 	suite.store.SetCluster(addrPort(suite.serverLn.Addr()), Cluster{
-		Endpoints: []string{
-			suite.serverLn.Addr().String(),
-		},
+		Name: "any",
 	})
 
 	stop := make(chan struct{})
 	go func() {
 		for i := 0; i < 10; i++ {
 			suite.store.SetCluster(addrPort(suite.serverLn.Addr()), Cluster{
-				Endpoints: []string{
-					suite.serverLn.Addr().String(),
-				},
+				Name: "any",
 			})
 			time.Sleep(time.Second / 10)
 			suite.store.SetCluster(addrPort(suite.serverLn.Addr()), Cluster{
-				Endpoints: []string{
-					suite.serverLn.Addr().String(),
-					suite.targetLn.Addr().String(),
-				},
+				Name:      "any",
+				Endpoints: []string{suite.targetLn.Addr().String()},
 			})
 			time.Sleep(time.Second / 10)
 		}
