@@ -7,9 +7,13 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	discoverygrpc "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
+	metricsservice "github.com/envoyproxy/go-control-plane/envoy/service/metrics/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/log"
+	prom "github.com/prometheus/client_model/go"
+	"github.com/rueian/zenvoy/pkg/xds"
 	"google.golang.org/grpc"
 	"sync"
+	"time"
 )
 
 type XDSClient interface {
@@ -95,6 +99,28 @@ type Client struct {
 	isProxy  isProxyFn
 	clusters []string
 	grpcConn *grpc.ClientConn
+}
+
+func (c *Client) Trigger(ctx context.Context, cluster string) error {
+	client := metricsservice.NewMetricsServiceClient(c.grpcConn)
+	stream, err := client.StreamMetrics(ctx)
+	if err != nil {
+		return err
+	}
+	defer stream.CloseAndRecv()
+
+	mn := fmt.Sprintf("cluster.%s.%s", cluster, xds.TriggerMetric)
+	ty := prom.MetricType_COUNTER
+	ts := time.Now().UnixNano() / 1e6
+	va := float64(1)
+	return stream.Send(&metricsservice.StreamMetricsMessage{
+		Identifier: &metricsservice.StreamMetricsMessage_Identifier{Node: &corev3.Node{Id: c.nodeID}},
+		EnvoyMetrics: []*prom.MetricFamily{{
+			Name:   &mn,
+			Type:   &ty,
+			Metric: []*prom.Metric{{TimestampMs: &ts, Counter: &prom.Counter{Value: &va}}},
+		}},
+	})
 }
 
 func (c *Client) Listen(ctx context.Context) error {

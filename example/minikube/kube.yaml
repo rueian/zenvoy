@@ -54,8 +54,6 @@ spec:
           env:
             - name: XDS_ADDR
               value: zenvoy-xds:18000
-            - name: TRIGGER_URL
-              value: http://zenvoy-xds:17999
           ports:
             - containerPort: 18001
         - name: envoy
@@ -94,7 +92,6 @@ spec:
           image: rueian/zenvoy-xds:latest
           imagePullPolicy: Always
           ports:
-            - containerPort: 17999
             - containerPort: 18000
 ---
 apiVersion: apps/v1
@@ -152,10 +149,6 @@ spec:
       name: tcp
       port: 18000
       targetPort: 18000
-    - protocol: TCP
-      name: http
-      port: 17999
-      targetPort: 17999
 ---
 apiVersion: v1
 kind: Service
@@ -196,6 +189,17 @@ data:
       cds_config:
         resource_api_version: V3
         ads: {}
+
+    stats_sinks:
+      - name: monitor
+        typed_config:
+          "@type": type.googleapis.com/envoy.config.metrics.v3.MetricsServiceConfig
+          transport_api_version: V3
+          grpc_service:
+            envoy_grpc:
+              cluster_name: xds_cluster
+
+    stats_config:
 
     node:
       cluster: zenvoy-cluster

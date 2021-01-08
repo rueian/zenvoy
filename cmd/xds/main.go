@@ -9,7 +9,6 @@ import (
 	"github.com/rueian/zenvoy/pkg/xds"
 	"k8s.io/client-go/kubernetes"
 	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -46,17 +45,11 @@ func main() {
 		}
 	}()
 
-	scaler := kube.NewScaler(clientset)
-	go func() {
-		http.ListenAndServe(fmt.Sprintf(":%d", conf.TriggerPort), http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-			if deploy := request.URL.Query().Get("deployment"); deploy != "" {
-				if err := scaler.Scale(context.Background(), conf.KubeNamespace, deploy); err != nil {
-					l.Errorf("fail to scale deployment %s %+v", deploy, err)
-				}
-			}
-			w.WriteHeader(http.StatusNoContent)
-		}))
-	}()
+	scaler := kube.NewScaler(l, clientset, conf.KubeNamespace)
+	monitor := xds.NewMonitorServer(scaler, xds.MonitorOptions{
+		ScaleToZeroAfter: conf.ScaleToZeroAfter,
+		ScaleToZeroCheck: conf.ScaleToZeroCheck,
+	})
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", conf.XDSPort))
 	if err != nil {
@@ -66,7 +59,7 @@ func main() {
 	l.Infof("xds listen on %s", lis.Addr().String())
 
 	go func() {
-		if err := server.Serve(context.Background(), lis); err != nil {
+		if err := server.Serve(context.Background(), lis, monitor); err != nil {
 			l.Fatalf("listen error %+v", err)
 		}
 	}()

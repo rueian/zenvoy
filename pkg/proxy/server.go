@@ -73,6 +73,7 @@ func (s *Server) redirect(endpoint string, conn net.Conn) {
 	}
 	defer conn2.Close()
 
+	// TODO: bpf_sk_redirect_map + sock_map to bypass userspace forwarding
 	go io.Copy(conn, conn2)
 	io.Copy(conn2, conn)
 }

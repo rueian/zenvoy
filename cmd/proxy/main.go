@@ -12,7 +12,6 @@ import (
 	"golang.org/x/sync/singleflight"
 	"google.golang.org/grpc"
 	"net"
-	"net/http"
 	"strings"
 	"syscall"
 	"time"
@@ -61,12 +60,8 @@ func main() {
 	xdsClient := proxy.NewXDSClient(l, conn, conf.XDSNodeID, isProxy)
 	server := proxy.NewServer(l, xdsClient, func(cluster string) {
 		sg.Do(cluster, func() (interface{}, error) {
-			resp, err := http.Get(conf.TriggerURL + "?deployment=" + cluster)
-			if err != nil {
+			if err := xdsClient.Trigger(context.Background(), cluster); err != nil {
 				l.Errorf("trigger error %+v", err)
-			}
-			if resp != nil {
-				resp.Body.Close()
 			}
 			return nil, nil
 		})

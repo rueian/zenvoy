@@ -9,6 +9,7 @@ require (
 	github.com/envoyproxy/protoc-gen-validate v0.4.1 // indirect
 	github.com/golang/protobuf v1.4.3
 	github.com/kelseyhightower/envconfig v1.4.0
+	github.com/prometheus/client_model v0.2.0
 	golang.org/x/net v0.0.0-20201209123823-ac852fbbde11 // indirect
 	golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
 	golang.org/x/sys v0.0.0-20201211090839-8ad439b19e0f // indirect

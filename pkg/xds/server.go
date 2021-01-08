@@ -6,6 +6,7 @@ import (
 	discoverygrpc "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
 	endpointservice "github.com/envoyproxy/go-control-plane/envoy/service/endpoint/v3"
 	listenerservice "github.com/envoyproxy/go-control-plane/envoy/service/listener/v3"
+	metricsservice "github.com/envoyproxy/go-control-plane/envoy/service/metrics/v3"
 	routeservice "github.com/envoyproxy/go-control-plane/envoy/service/route/v3"
 	runtimeservice "github.com/envoyproxy/go-control-plane/envoy/service/runtime/v3"
 	secretservice "github.com/envoyproxy/go-control-plane/envoy/service/secret/v3"
@@ -40,7 +41,7 @@ type Server struct {
 	server *grpc.Server
 }
 
-func (s *Server) Serve(ctx context.Context, lis net.Listener, options ...grpc.ServerOption) error {
+func (s *Server) Serve(ctx context.Context, lis net.Listener, monitor *MonitorServer, options ...grpc.ServerOption) error {
 	options = append(options, grpc.MaxConcurrentStreams(grpcMaxConcurrentStreams))
 	server := grpc.NewServer(options...)
 	cb := &testv3.Callbacks{Debug: s.debug}
@@ -52,6 +53,9 @@ func (s *Server) Serve(ctx context.Context, lis net.Listener, options ...grpc.Se
 	listenerservice.RegisterListenerDiscoveryServiceServer(server, svc)
 	secretservice.RegisterSecretDiscoveryServiceServer(server, svc)
 	runtimeservice.RegisterRuntimeDiscoveryServiceServer(server, svc)
+	if monitor != nil {
+		metricsservice.RegisterMetricsServiceServer(server, monitor)
+	}
 	s.server = server
 	return server.Serve(lis)
 }

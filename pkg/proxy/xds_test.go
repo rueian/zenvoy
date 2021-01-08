@@ -104,7 +104,7 @@ func setupXDS(t *testing.T) *XDSSuite {
 		t.Fatal(err)
 	}
 	server := xds.NewServer(l, nodeID)
-	go server.Serve(context.Background(), ln)
+	go server.Serve(context.Background(), ln, nil)
 
 	conn, err := grpc.Dial(ln.Addr().String(), grpc.WithInsecure())
 	if err != nil {
