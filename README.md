@@ -25,4 +25,11 @@ NAME                           READY   STATUS    RESTARTS   AGE
 zenvoy-echo-64b65fb6b6-vq6x9   1/1     Running   0          1s
 zenvoy-proxy-74cbb84c5-rhhl8   2/2     Running   0          10s
 zenvoy-xds-867674b7c8-v6thp    1/1     Running   0          10s
+
+# 5 minutes later
+
+▶ kubectl get po
+NAME                           READY   STATUS    RESTARTS   AGE
+zenvoy-proxy-74cbb84c5-rhhl8   2/2     Running   0          5m
+zenvoy-xds-867674b7c8-v6thp    1/1     Running   0          5m
 ```
