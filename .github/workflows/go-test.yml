@@ -6,7 +6,7 @@ jobs:
   go-test:
     name: go-test
     runs-on: ubuntu-latest
-
+    environment: github-action
     steps:
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
@@ -21,4 +21,5 @@ jobs:
           go get -v -t -d ./...
 
       - name: Test
-        run: go test -v ./...
+        run: |
+          go test -coverpkg=./... -coverprofile=./c.cov ./...

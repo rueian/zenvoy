@@ -1,4 +1,8 @@
 # zenvoy
+
+![go-test](https://github.com/rueian/zenvoy/workflows/go-test/badge.svg)
+[![Maintainability](https://api.codeclimate.com/v1/badges/9706ade6af266b20323c/maintainability)](https://codeclimate.com/github/rueian/zenvoy/maintainability)
+
 A L4 tcp proxy and a XDS server that supports envoy upstream endpoints to scale from&to zero.   
 
 ```
