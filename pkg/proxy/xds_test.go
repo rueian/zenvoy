@@ -9,6 +9,7 @@ import (
 	"net"
 	"strings"
 	"testing"
+	"time"
 )
 
 type XDSSuite struct {
@@ -19,6 +20,7 @@ type XDSSuite struct {
 	nodeID  string
 	cancel  context.CancelFunc
 	isProxy isProxyFn
+	scaler  *mockScaler
 
 	proxyHost string
 }
@@ -88,6 +90,16 @@ func TestNewXDSClient(t *testing.T) {
 			}
 		}
 	}
+
+	if err = suite.client.Trigger(context.Background(), "mycluster"); err != nil {
+		t.Fatalf("trigger err %v", err)
+	}
+	select {
+	case <-suite.scaler.Triggered("mycluster"):
+	case <-time.After(time.Second):
+		t.Fatalf("trigger timeout %v", suite.scaler)
+	}
+
 }
 
 func setupXDS(t *testing.T) *XDSSuite {
@@ -103,8 +115,13 @@ func setupXDS(t *testing.T) *XDSSuite {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := xds.NewServer(l, nodeID)
-	go server.Serve(context.Background(), ln, nil)
+	server := xds.NewServer(l, nodeID, xds.Debug(true))
+	scaler := &mockScaler{chs: make(map[string]chan struct{})}
+	monitor := xds.NewMonitorServer(scaler, xds.MonitorOptions{
+		ScaleToZeroAfter: time.Millisecond,
+		ScaleToZeroCheck: time.Millisecond,
+	})
+	go server.Serve(context.Background(), ln, monitor)
 
 	conn, err := grpc.Dial(ln.Addr().String(), grpc.WithInsecure())
 	if err != nil {
@@ -124,6 +141,7 @@ func setupXDS(t *testing.T) *XDSSuite {
 		proxyHost: proxyHost,
 		cancel:    cancel,
 		isProxy:   isProxy,
+		scaler:    scaler,
 	}
 }
 
@@ -143,4 +161,20 @@ func exclude(in []string, fn func(string) bool) []string {
 		}
 	}
 	return out
+}
+
+type mockScaler struct {
+	chs map[string]chan struct{}
+}
+
+func (m *mockScaler) Triggered(cluster string) <-chan struct{} {
+	return m.chs[cluster]
+}
+
+func (m *mockScaler) ScaleToZero(cluster string) {
+	close(m.chs[cluster])
+}
+
+func (m *mockScaler) ScaleFromZero(cluster string) {
+	m.chs[cluster] = make(chan struct{})
 }
