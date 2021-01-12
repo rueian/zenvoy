@@ -3,13 +3,15 @@ package proxy
 import (
 	"context"
 	"fmt"
-	"github.com/rueian/zenvoy/pkg/logger"
-	"github.com/rueian/zenvoy/pkg/xds"
-	"google.golang.org/grpc"
 	"net"
 	"strings"
 	"testing"
 	"time"
+
+	"google.golang.org/grpc"
+
+	"github.com/rueian/zenvoy/pkg/logger"
+	"github.com/rueian/zenvoy/pkg/xds"
 )
 
 type XDSSuite struct {

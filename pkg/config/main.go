@@ -1,8 +1,9 @@
 package config
 
 import (
-	"github.com/kelseyhightower/envconfig"
 	"time"
+
+	"github.com/kelseyhightower/envconfig"
 )
 
 type XDS struct {

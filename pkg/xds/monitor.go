@@ -1,11 +1,12 @@
 package xds
 
 import (
-	metricsservice "github.com/envoyproxy/go-control-plane/envoy/service/metrics/v3"
-	prom "github.com/prometheus/client_model/go"
 	"strings"
 	"sync"
 	"time"
+
+	metricsservice "github.com/envoyproxy/go-control-plane/envoy/service/metrics/v3"
+	prom "github.com/prometheus/client_model/go"
 )
 
 type Scaler interface {

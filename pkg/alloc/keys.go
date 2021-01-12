@@ -1,6 +1,8 @@
 package alloc
 
-import "sync"
+import (
+	"sync"
+)
 
 func NewKeys(min, max uint32) *Keys {
 	return &Keys{

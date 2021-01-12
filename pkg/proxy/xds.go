@@ -3,6 +3,9 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
+
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
@@ -10,10 +13,9 @@ import (
 	metricsservice "github.com/envoyproxy/go-control-plane/envoy/service/metrics/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/log"
 	prom "github.com/prometheus/client_model/go"
-	"github.com/rueian/zenvoy/pkg/xds"
 	"google.golang.org/grpc"
-	"sync"
-	"time"
+
+	"github.com/rueian/zenvoy/pkg/xds"
 )
 
 type XDSClient interface {

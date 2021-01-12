@@ -1,11 +1,12 @@
 package proxy
 
 import (
-	"github.com/envoyproxy/go-control-plane/pkg/log"
 	"io"
 	"math/rand"
 	"net"
 	"sync"
+
+	"github.com/envoyproxy/go-control-plane/pkg/log"
 )
 
 func NewServer(logger log.Logger, xds XDSClient, trigger func(string)) *Server {

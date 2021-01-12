@@ -2,6 +2,7 @@ package kube
 
 import (
 	"context"
+
 	"github.com/envoyproxy/go-control-plane/pkg/log"
 	"golang.org/x/sync/singleflight"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"

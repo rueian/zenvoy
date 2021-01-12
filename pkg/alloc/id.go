@@ -1,6 +1,8 @@
 package alloc
 
-import "errors"
+import (
+	"errors"
+)
 
 func NewID(min, max uint32) *ID {
 	return &ID{

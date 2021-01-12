@@ -1,12 +1,13 @@
 package proxy
 
 import (
-	"github.com/rueian/zenvoy/pkg/logger"
 	"net"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/rueian/zenvoy/pkg/logger"
 )
 
 type ServerSuite struct {

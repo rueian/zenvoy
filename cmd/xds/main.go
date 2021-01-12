@@ -3,15 +3,17 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/rueian/zenvoy/pkg/config"
-	"github.com/rueian/zenvoy/pkg/kube"
-	"github.com/rueian/zenvoy/pkg/logger"
-	"github.com/rueian/zenvoy/pkg/xds"
-	"k8s.io/client-go/kubernetes"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"k8s.io/client-go/kubernetes"
+
+	"github.com/rueian/zenvoy/pkg/config"
+	"github.com/rueian/zenvoy/pkg/kube"
+	"github.com/rueian/zenvoy/pkg/logger"
+	"github.com/rueian/zenvoy/pkg/xds"
 )
 
 var l = &logger.Std{}
