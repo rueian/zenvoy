@@ -1,6 +1,8 @@
 package alloc
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestNewID(t *testing.T) {
 	var min uint32 = 1

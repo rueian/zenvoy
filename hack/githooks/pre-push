@@ -1,0 +1,9 @@
+#!/bin/bash
+
+set -e
+
+ROOT=`realpath $(dirname $0)/../..`
+pushd $ROOT
+./hack/verify-gofmt.sh
+./hack/verify-govet.sh
+popd

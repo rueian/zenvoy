@@ -5,16 +5,18 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/rueian/zenvoy/pkg/config"
-	"github.com/rueian/zenvoy/pkg/logger"
-	"github.com/rueian/zenvoy/pkg/proxy"
-	"github.com/rueian/zenvoy/pkg/tproxy"
-	"golang.org/x/sync/singleflight"
-	"google.golang.org/grpc"
 	"net"
 	"strings"
 	"syscall"
 	"time"
+
+	"golang.org/x/sync/singleflight"
+	"google.golang.org/grpc"
+
+	"github.com/rueian/zenvoy/pkg/config"
+	"github.com/rueian/zenvoy/pkg/logger"
+	"github.com/rueian/zenvoy/pkg/proxy"
+	"github.com/rueian/zenvoy/pkg/tproxy"
 )
 
 var l = &logger.Std{}

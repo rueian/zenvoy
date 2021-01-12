@@ -2,8 +2,8 @@ package kube
 
 import (
 	"context"
-	"github.com/rueian/zenvoy/pkg/alloc"
-	"github.com/rueian/zenvoy/pkg/xds"
+	"strings"
+
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -14,7 +14,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"strings"
+
+	"github.com/rueian/zenvoy/pkg/alloc"
+	"github.com/rueian/zenvoy/pkg/xds"
 )
 
 var (

@@ -2,6 +2,8 @@ package xds
 
 import (
 	"context"
+	"net"
+
 	clusterservice "github.com/envoyproxy/go-control-plane/envoy/service/cluster/v3"
 	discoverygrpc "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
 	endpointservice "github.com/envoyproxy/go-control-plane/envoy/service/endpoint/v3"
@@ -14,7 +16,6 @@ import (
 	serverv3 "github.com/envoyproxy/go-control-plane/pkg/server/v3"
 	testv3 "github.com/envoyproxy/go-control-plane/pkg/test/v3"
 	"google.golang.org/grpc"
-	"net"
 )
 
 const grpcMaxConcurrentStreams = 1000000
