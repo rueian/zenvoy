@@ -4,5 +4,6 @@ set -e
 
 ROOT=`realpath $(dirname $0)/../..`
 pushd $ROOT
-make
+./hack/verify-gofmt.sh
+./hack/verify-govet.sh
 popd
