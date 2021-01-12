@@ -4,11 +4,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"syscall"
 	"time"
-	"fmt"
 
 	"golang.org/x/sync/singleflight"
 	"google.golang.org/grpc"

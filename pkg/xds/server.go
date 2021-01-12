@@ -1,8 +1,8 @@
 package xds
 
 import (
-	"net"
 	"context"
+	"net"
 
 	clusterservice "github.com/envoyproxy/go-control-plane/envoy/service/cluster/v3"
 	discoverygrpc "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
