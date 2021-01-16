@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -166,17 +167,24 @@ func exclude(in []string, fn func(string) bool) []string {
 }
 
 type mockScaler struct {
+	mu  sync.Mutex
 	chs map[string]chan struct{}
 }
 
 func (m *mockScaler) Triggered(cluster string) <-chan struct{} {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.chs[cluster]
 }
 
 func (m *mockScaler) ScaleToZero(cluster string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	close(m.chs[cluster])
 }
 
 func (m *mockScaler) ScaleFromZero(cluster string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.chs[cluster] = make(chan struct{})
 }

@@ -59,7 +59,9 @@ func TestDirectClose(t *testing.T) {
 	defer suite.Close()
 
 	resp, err := http.Get("http://" + suite.serverLn.Addr().String())
-	if !strings.Contains(err.Error(), "EOF") && !strings.Contains(err.Error(), "connection reset by peer") {
+	if !strings.Contains(err.Error(), "EOF") &&
+		!strings.Contains(err.Error(), "server closed") &&
+		!strings.Contains(err.Error(), "connection reset by peer") {
 		t.Error(resp, err)
 	}
 }
