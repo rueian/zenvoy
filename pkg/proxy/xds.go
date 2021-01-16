@@ -163,57 +163,77 @@ func (c *Client) Listen(ctx context.Context) error {
 
 		switch in.TypeUrl {
 		case typeCDS:
-			var current []string
-			for _, res := range in.Resources {
-				cluster := &clusterv3.Cluster{}
-				if err := res.UnmarshalTo(cluster); err != nil {
-					c.logger.Errorf("fail to unmarshal %s with %s", typeCDS, res.String())
-					continue
-				}
-				if cluster.EdsClusterConfig != nil {
-					current = append(current, cluster.Name)
-				}
-			}
-			if removed, ok := missing(c.clusters, current); ok {
-				reqs = append(reqs, &discoverygrpc.DiscoveryRequest{ResourceNames: current, TypeUrl: typeEDS})
-				c.clusters = current
-				for _, m := range removed {
-					c.store.RemoveCluster(m)
-				}
-			}
-			c.logger.Infof("receive xds clusters: ver=%s %v", in.VersionInfo, current)
+			reqs = append(reqs, c.handleCDSResponse(in)...)
 		case typeEDS:
-			for _, res := range in.Resources {
-				cla := &endpointv3.ClusterLoadAssignment{}
-				if err := res.UnmarshalTo(cla); err != nil {
-					c.logger.Errorf("fail to unmarshal %s with %s", typeEDS, res.String())
-					continue
-				}
-				var intended []string
-				var proxyPort uint32
-				for _, endpoints := range cla.Endpoints {
-					for _, e := range endpoints.LbEndpoints {
-						if endpoint := e.GetEndpoint(); endpoint == nil {
-							c.logger.Errorf("fail to GetEndpoint() %s", typeEDS, e.String())
-						} else if addr := endpoint.Address.GetSocketAddress(); addr != nil {
-							addrStr := fmt.Sprintf("%s:%d", addr.Address, addr.GetPortValue())
-							if c.isProxy(addrStr) {
-								proxyPort = addr.GetPortValue()
-							} else {
-								intended = append(intended, addrStr)
-							}
-						}
-					}
-				}
-				c.store.SetCluster(proxyPort, Cluster{Name: cla.ClusterName, Endpoints: intended})
-				c.logger.Infof("receive xds endpoints: ver=%s %s %v", in.VersionInfo, cla.ClusterName, intended)
-			}
+			reqs = append(reqs, c.handleEDSResponse(in)...)
 		}
 
 		for _, req := range reqs {
 			requests <- req
 		}
 	}
+}
+
+func (c *Client) handleCDSResponse(in *discoverygrpc.DiscoveryResponse) (reqs []*discoverygrpc.DiscoveryRequest) {
+	var current []string
+	for _, res := range in.Resources {
+		cluster := &clusterv3.Cluster{}
+		if err := res.UnmarshalTo(cluster); err != nil {
+			c.logger.Errorf("fail to unmarshal %s with %s", typeCDS, res.String())
+			continue
+		}
+		if cluster.EdsClusterConfig != nil {
+			current = append(current, cluster.Name)
+		}
+	}
+	if removed, ok := missing(c.clusters, current); ok {
+		reqs = append(reqs, &discoverygrpc.DiscoveryRequest{ResourceNames: current, TypeUrl: typeEDS})
+		c.clusters = current
+		for _, m := range removed {
+			c.store.RemoveCluster(m)
+		}
+	}
+	c.logger.Infof("receive xds clusters: ver=%s %v", in.VersionInfo, current)
+	return reqs
+}
+
+func (c *Client) handleEDSResponse(in *discoverygrpc.DiscoveryResponse) (reqs []*discoverygrpc.DiscoveryRequest) {
+	for _, res := range in.Resources {
+		cla := &endpointv3.ClusterLoadAssignment{}
+		if err := res.UnmarshalTo(cla); err != nil {
+			c.logger.Errorf("fail to unmarshal %s with %s", typeEDS, res.String())
+			continue
+		}
+		var intended []string
+		var proxyPort uint32
+		for _, endpoints := range cla.Endpoints {
+			for _, e := range endpoints.LbEndpoints {
+				addr := endpointAddr(e)
+				if addr == nil {
+					c.logger.Errorf("fail to endpointAddr() %s", typeEDS, e.String())
+					continue
+				}
+				addrStr := fmt.Sprintf("%s:%d", addr.Address, addr.GetPortValue())
+				if c.isProxy(addrStr) {
+					proxyPort = addr.GetPortValue()
+				} else {
+					intended = append(intended, addrStr)
+				}
+			}
+		}
+		c.store.SetCluster(proxyPort, Cluster{Name: cla.ClusterName, Endpoints: intended})
+		c.logger.Infof("receive xds endpoints: ver=%s %s %v", in.VersionInfo, cla.ClusterName, intended)
+	}
+	return reqs
+}
+
+func endpointAddr(e *endpointv3.LbEndpoint) *corev3.SocketAddress {
+	if endpoint := e.GetEndpoint(); endpoint != nil {
+		if addr := endpoint.GetAddress(); addr != nil {
+			return addr.GetSocketAddress()
+		}
+	}
+	return nil
 }
 
 func missing(prev, now []string) ([]string, bool) {

@@ -5,7 +5,6 @@ import (
 
 	"github.com/envoyproxy/go-control-plane/pkg/log"
 	"golang.org/x/sync/singleflight"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -36,11 +35,19 @@ type Scaler struct {
 }
 
 func (s *Scaler) ScaleToZero(cluster string) {
-	s.Scale(context.Background(), cluster, ScaleToZero)
+	if err := s.Scale(context.Background(), cluster, ScaleToZero); err != nil {
+		s.logger.Errorf("failed to xds scaled deploy/%s to zero: %v", cluster, err)
+	} else {
+		s.logger.Infof("xds scaled deploy/%s to zero", cluster)
+	}
 }
 
 func (s *Scaler) ScaleFromZero(cluster string) {
-	s.Scale(context.Background(), cluster, ScaleFromZero)
+	if err := s.Scale(context.Background(), cluster, ScaleFromZero); err != nil {
+		s.logger.Errorf("failed to xds scaled deploy/%s from zero: %v", cluster, err)
+	} else {
+		s.logger.Infof("xds scaled deploy/%s from zero", cluster)
+	}
 }
 
 func (s *Scaler) Scale(ctx context.Context, deployment string, mutate ScaleMutation) (err error) {
@@ -48,17 +55,11 @@ func (s *Scaler) Scale(ctx context.Context, deployment string, mutate ScaleMutat
 		client := s.clientset.AppsV1().Deployments(s.namespace)
 		scale, err := client.GetScale(ctx, deployment, v1.GetOptions{})
 		if err != nil {
-			if apierrors.IsNotFound(err) {
-				return nil, nil
-			}
 			return nil, err
 		}
 		if expect := mutate(scale.Spec.Replicas); expect != scale.Spec.Replicas {
 			scale.Spec.Replicas = expect
-			if _, err = client.UpdateScale(ctx, deployment, scale, v1.UpdateOptions{}); apierrors.IsNotFound(err) {
-				return nil, nil
-			}
-			s.logger.Infof("xds scaled deploy/%s to %d replicas", deployment, scale.Spec.Replicas)
+			_, err = client.UpdateScale(ctx, deployment, scale, v1.UpdateOptions{})
 		}
 		return nil, err
 	})

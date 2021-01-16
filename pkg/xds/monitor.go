@@ -67,17 +67,15 @@ func (s *MonitorServer) StreamMetrics(server metricsservice.MetricsService_Strea
 		for _, m := range msg.EnvoyMetrics {
 			if *m.Type == prom.MetricType_COUNTER && len(m.Metric) > 0 {
 				if mn := *m.Name; strings.HasSuffix(mn, TriggerMetric) {
-					if parts := strings.Split(mn, "."); len(parts) == 3 {
-						name := parts[1]
-						prev := s.clusters[name]
-						val := *m.Metric[0].Counter.Value
-						tms := *m.Metric[0].TimestampMs
-						if val != prev.Val {
-							go s.scaler.ScaleFromZero(name)
-							prev.Val = val
-							prev.Tms = tms
-							s.clusters[name] = prev
-						}
+					parts := strings.Split(mn, ".")
+					if len(parts) != 3 {
+						continue
+					}
+					name := parts[1]
+					curr := Stat{Val: *m.Metric[0].Counter.Value, Tms: *m.Metric[0].TimestampMs}
+					if curr.Val != s.clusters[name].Val {
+						go s.scaler.ScaleFromZero(name)
+						s.clusters[name] = curr
 					}
 				}
 			}
