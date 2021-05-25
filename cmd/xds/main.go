@@ -14,6 +14,7 @@ import (
 	"github.com/rueian/zenvoy/pkg/kube"
 	"github.com/rueian/zenvoy/pkg/logger"
 	"github.com/rueian/zenvoy/pkg/xds"
+	"github.com/rueian/zenvoy/pkg/xds/controllers"
 )
 
 var l = &logger.Std{}
@@ -26,7 +27,7 @@ func main() {
 
 	server := xds.NewServer(l, conf.XDSNodeID, xds.Debug(l.Debug))
 
-	manager, err := kube.NewManager(conf.KubeNamespace)
+	manager, err := controllers.NewControllerManager(conf.KubeNamespace)
 	if err != nil {
 		l.Fatalf("manager error %+v", err)
 	}
@@ -36,7 +37,7 @@ func main() {
 		l.Fatalf("clientset error %+v", err)
 	}
 
-	if err = kube.SetupEndpointController(manager, server.Snapshot, conf.ProxyAddr, conf.ProxyPortMin, conf.ProxyPortMax); err != nil {
+	if err = controllers.SetupEndpointController(manager, server.Snapshot, conf.ProxyAddr, conf.ProxyPortMin, conf.ProxyPortMax); err != nil {
 		l.Fatalf("controller error %+v", err)
 	}
 

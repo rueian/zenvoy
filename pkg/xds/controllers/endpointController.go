@@ -1,4 +1,4 @@
-package kube
+package controllers
 
 import (
 	"context"
@@ -6,34 +6,14 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/rueian/zenvoy/pkg/alloc"
 	"github.com/rueian/zenvoy/pkg/xds"
 )
-
-var (
-	scheme = runtime.NewScheme()
-)
-
-func init() {
-	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-}
-
-func NewManager(namespace string) (manager.Manager, error) {
-	conf, err := config.GetConfig()
-	if err != nil {
-		return nil, err
-	}
-	return manager.New(conf, manager.Options{Scheme: scheme, Namespace: namespace})
-}
 
 func SetupEndpointController(mgr manager.Manager, snapshot *xds.Snapshot, proxyIP string, portMin, portMax uint32) error {
 	controller := &EndpointController{

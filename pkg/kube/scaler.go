@@ -22,11 +22,16 @@ var ScaleToZero ScaleMutation = func(current int32) (expect int32) {
 	return 0
 }
 
-func NewScaler(logger log.Logger, clientset *kubernetes.Clientset, namespace string) *Scaler {
-	return &Scaler{logger: logger, clientset: clientset, namespace: namespace}
+func NewScaler(logger log.Logger, clientset *kubernetes.Clientset, namespace string) Scaler {
+	return &scaler{logger: logger, clientset: clientset, namespace: namespace}
 }
 
-type Scaler struct {
+type Scaler interface {
+	ScaleToZero(cluster string)
+	ScaleFromZero(cluster string)
+}
+
+type scaler struct {
 	logger    log.Logger
 	clientset *kubernetes.Clientset
 	namespace string
@@ -34,23 +39,23 @@ type Scaler struct {
 	sg singleflight.Group
 }
 
-func (s *Scaler) ScaleToZero(cluster string) {
-	if err := s.Scale(context.Background(), cluster, ScaleToZero); err != nil {
+func (s *scaler) ScaleToZero(cluster string) {
+	if err := s.scale(context.Background(), cluster, ScaleToZero); err != nil {
 		s.logger.Errorf("failed to xds scaled deploy/%s to zero: %v", cluster, err)
 	} else {
 		s.logger.Infof("xds scaled deploy/%s to zero", cluster)
 	}
 }
 
-func (s *Scaler) ScaleFromZero(cluster string) {
-	if err := s.Scale(context.Background(), cluster, ScaleFromZero); err != nil {
+func (s *scaler) ScaleFromZero(cluster string) {
+	if err := s.scale(context.Background(), cluster, ScaleFromZero); err != nil {
 		s.logger.Errorf("failed to xds scaled deploy/%s from zero: %v", cluster, err)
 	} else {
 		s.logger.Infof("xds scaled deploy/%s from zero", cluster)
 	}
 }
 
-func (s *Scaler) Scale(ctx context.Context, deployment string, mutate ScaleMutation) (err error) {
+func (s *scaler) scale(ctx context.Context, deployment string, mutate ScaleMutation) (err error) {
 	_, err, _ = s.sg.Do(deployment, func() (interface{}, error) {
 		client := s.clientset.AppsV1().Deployments(s.namespace)
 		scale, err := client.GetScale(ctx, deployment, v1.GetOptions{})
