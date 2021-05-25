@@ -11,9 +11,10 @@ import (
 	"github.com/rueian/zenvoy/pkg/kube"
 )
 
-type Stat struct {
-	Val float64
-	Tms int64
+type stat struct {
+	isActive       bool
+	requestCount   float64
+	lastUpdateTime int64
 }
 
 const TriggerMetric = "upstream_rq_total"
@@ -25,32 +26,23 @@ type MonitorOptions struct {
 
 func NewMonitorServer(scaler kube.Scaler, options MonitorOptions) *MonitorServer {
 	s := &MonitorServer{
-		clusters: make(map[string]Stat),
+		options:  options,
+		clusters: make(map[string]stat),
 		scaler:   scaler,
 	}
-	go func() {
-		for {
-			time.Sleep(options.ScaleToZeroCheck)
-			now := time.Now().UnixNano() / 1e6
-
-			s.mu.Lock()
-			for cluster, stat := range s.clusters {
-				if stat.Tms != 0 && now-stat.Tms > options.ScaleToZeroAfter.Milliseconds() {
-					stat.Tms = 0
-					s.clusters[cluster] = stat
-					go scaler.ScaleToZero(cluster)
-				}
-			}
-			s.mu.Unlock()
-		}
-	}()
+	s.Start()
 	return s
 }
 
 type MonitorServer struct {
 	mu       sync.Mutex
-	clusters map[string]Stat
+	options  MonitorOptions
+	clusters map[string]stat
 	scaler   kube.Scaler
+}
+
+func (s *MonitorServer) Start() {
+	go s.idleClusterReaper()
 }
 
 func (s *MonitorServer) StreamMetrics(server metricsservice.MetricsService_StreamMetricsServer) error {
@@ -74,12 +66,39 @@ func (s *MonitorServer) processCounter(m *prom.MetricFamily) {
 	if mn := *m.Name; strings.HasSuffix(mn, TriggerMetric) {
 		if parts := strings.Split(mn, "."); len(parts) == 3 {
 			name := parts[1]
-			curr := Stat{Val: *m.Metric[0].Counter.Value, Tms: *m.Metric[0].TimestampMs}
-			if curr.Val == s.clusters[name].Val {
+			currRequestCount := *m.Metric[0].Counter.Value // Value means the amount of received requests.
+
+			// If two request counts are the same means no new requests received,
+			// hence we don't need to update the cluster state.
+			if currRequestCount == s.clusters[name].requestCount {
 				return
 			}
+
 			go s.scaler.ScaleFromZero(name)
-			s.clusters[name] = curr
+			s.clusters[name] = stat{
+				requestCount:   *m.Metric[0].Counter.Value,
+				lastUpdateTime: *m.Metric[0].TimestampMs,
+				isActive:       true,
+			}
 		}
+	}
+}
+
+func (s *MonitorServer) idleClusterReaper() {
+	for {
+		time.Sleep(s.options.ScaleToZeroCheck)
+		now := time.Now().UnixNano() / 1e6
+
+		s.mu.Lock()
+		for cluster, stat := range s.clusters {
+			isNowIdle := now-stat.lastUpdateTime > s.options.ScaleToZeroAfter.Milliseconds()
+
+			if stat.isActive && isNowIdle {
+				stat.isActive = false
+				s.clusters[cluster] = stat
+				go s.scaler.ScaleToZero(cluster)
+			}
+		}
+		s.mu.Unlock()
 	}
 }
