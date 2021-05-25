@@ -7,12 +7,9 @@ import (
 
 	metricsservice "github.com/envoyproxy/go-control-plane/envoy/service/metrics/v3"
 	prom "github.com/prometheus/client_model/go"
-)
 
-type Scaler interface {
-	ScaleToZero(cluster string)
-	ScaleFromZero(cluster string)
-}
+	"github.com/rueian/zenvoy/pkg/kube"
+)
 
 type Stat struct {
 	Val float64
@@ -26,7 +23,7 @@ type MonitorOptions struct {
 	ScaleToZeroCheck time.Duration
 }
 
-func NewMonitorServer(scaler Scaler, options MonitorOptions) *MonitorServer {
+func NewMonitorServer(scaler kube.Scaler, options MonitorOptions) *MonitorServer {
 	s := &MonitorServer{
 		clusters: make(map[string]Stat),
 		scaler:   scaler,
@@ -53,7 +50,7 @@ func NewMonitorServer(scaler Scaler, options MonitorOptions) *MonitorServer {
 type MonitorServer struct {
 	mu       sync.Mutex
 	clusters map[string]Stat
-	scaler   Scaler
+	scaler   kube.Scaler
 }
 
 func (s *MonitorServer) StreamMetrics(server metricsservice.MetricsService_StreamMetricsServer) error {
