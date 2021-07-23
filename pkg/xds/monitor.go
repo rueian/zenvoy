@@ -7,9 +7,12 @@ import (
 
 	metricsservice "github.com/envoyproxy/go-control-plane/envoy/service/metrics/v3"
 	prom "github.com/prometheus/client_model/go"
-
-	"github.com/rueian/zenvoy/pkg/kube"
 )
+
+type Scaler interface {
+	ScaleToZero(cluster string)
+	ScaleFromZero(cluster string)
+}
 
 type stat struct {
 	isActive       bool
@@ -24,13 +27,13 @@ type MonitorOptions struct {
 	ScaleToZeroCheck time.Duration
 }
 
-func NewMonitorServer(scaler kube.Scaler, options MonitorOptions) *MonitorServer {
+func NewMonitorServer(scaler Scaler, options MonitorOptions) *MonitorServer {
 	s := &MonitorServer{
 		options:  options,
 		clusters: make(map[string]stat),
 		scaler:   scaler,
 	}
-	s.Start()
+	go s.idleClusterReaper()
 	return s
 }
 
@@ -38,11 +41,7 @@ type MonitorServer struct {
 	mu       sync.Mutex
 	options  MonitorOptions
 	clusters map[string]stat
-	scaler   kube.Scaler
-}
-
-func (s *MonitorServer) Start() {
-	go s.idleClusterReaper()
+	scaler   Scaler
 }
 
 func (s *MonitorServer) StreamMetrics(server metricsservice.MetricsService_StreamMetricsServer) error {

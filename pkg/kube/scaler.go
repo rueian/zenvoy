@@ -22,13 +22,8 @@ var ScaleToZero ScaleMutation = func(current int32) (expect int32) {
 	return 0
 }
 
-func NewScaler(logger log.Logger, clientset *kubernetes.Clientset, namespace string) Scaler {
+func NewScaler(logger log.Logger, clientset *kubernetes.Clientset, namespace string) *scaler {
 	return &scaler{logger: logger, clientset: clientset, namespace: namespace}
-}
-
-type Scaler interface {
-	ScaleToZero(cluster string)
-	ScaleFromZero(cluster string)
 }
 
 type scaler struct {
