@@ -20,6 +20,7 @@ type XDSSuite struct {
 	ln      net.Listener
 	conn    *grpc.ClientConn
 	server  *xds.Server
+	monitor *xds.MonitorServer
 	client  *Client
 	nodeID  string
 	cancel  context.CancelFunc
@@ -66,9 +67,12 @@ func TestNewXDSClient(t *testing.T) {
 		if test.Delete {
 			err = suite.server.RemoveClusterEndpoints(test.ClusterName)
 			err = suite.server.RemoveCluster(test.ClusterName)
+			suite.monitor.RemoveCluster(test.ClusterName)
 		} else {
+			upstreams := endpoints(test.EndpointPort, test.Hosts)
 			err = suite.server.SetCluster(test.ClusterName)
-			err = suite.server.SetClusterEndpoints(test.ClusterName, endpoints(test.EndpointPort, test.Hosts)...)
+			err = suite.server.SetClusterEndpoints(test.ClusterName, upstreams...)
+			suite.monitor.TrackCluster(test.ClusterName, len(upstreams))
 		}
 		if err != nil {
 			t.Fatalf("xds error %v", err)
@@ -98,10 +102,11 @@ func TestNewXDSClient(t *testing.T) {
 	if err = suite.client.Trigger(context.Background(), "mycluster"); err != nil {
 		t.Fatalf("trigger err %v", err)
 	}
+	suite.monitor.TrackCluster("mycluster", 1)
 	select {
 	case <-suite.scaler.Triggered("mycluster"):
 	case <-time.After(time.Second):
-		t.Fatalf("trigger timeout %v", suite.scaler)
+		t.Fatalf("trigger timeout")
 	}
 
 }
@@ -140,6 +145,7 @@ func setupXDS(t *testing.T) *XDSSuite {
 		ln:        ln,
 		conn:      conn,
 		server:    server,
+		monitor:   monitor,
 		client:    client,
 		nodeID:    nodeID,
 		proxyHost: proxyHost,
@@ -181,7 +187,10 @@ func (m *mockScaler) Triggered(cluster string) <-chan struct{} {
 func (m *mockScaler) ScaleToZero(cluster string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	close(m.chs[cluster])
+	if m.chs[cluster] != nil {
+		close(m.chs[cluster])
+		m.chs[cluster] = nil
+	}
 }
 
 func (m *mockScaler) ScaleFromZero(cluster string) {

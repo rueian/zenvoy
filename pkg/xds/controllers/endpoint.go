@@ -15,9 +15,10 @@ import (
 	"github.com/rueian/zenvoy/pkg/xds"
 )
 
-func SetupEndpointController(mgr manager.Manager, snapshot *xds.Snapshot, proxyIP string, portMin, portMax uint32) error {
+func SetupEndpointController(mgr manager.Manager, monitor *xds.MonitorServer, snapshot *xds.Snapshot, proxyIP string, portMin, portMax uint32) error {
 	controller := &EndpointController{
 		Client:   mgr.GetClient(),
+		monitor:  monitor,
 		snapshot: snapshot,
 		portsMap: alloc.NewKeys(portMin, portMax),
 		proxyIP:  proxyIP,
@@ -29,6 +30,7 @@ func SetupEndpointController(mgr manager.Manager, snapshot *xds.Snapshot, proxyI
 
 type EndpointController struct {
 	client.Client
+	monitor  *xds.MonitorServer
 	snapshot *xds.Snapshot
 	portsMap *alloc.Keys
 	proxyIP  string
@@ -38,6 +40,7 @@ func (c *EndpointController) Reconcile(ctx context.Context, req reconcile.Reques
 	endpoints := &v1.Endpoints{}
 	if err := c.Get(ctx, req.NamespacedName, endpoints); err != nil {
 		if apierrors.IsNotFound(err) {
+			c.monitor.RemoveCluster(req.Name)
 			c.portsMap.Release(req.Name)
 			c.snapshot.RemoveClusterRoute(req.Name)
 			c.snapshot.RemoveClusterEndpoints(req.Name)
@@ -55,6 +58,8 @@ func (c *EndpointController) Reconcile(ctx context.Context, req reconcile.Reques
 			available = append(available, xds.Endpoint{IP: addr.IP, Port: uint32(port)})
 		}
 	}
+
+	c.monitor.TrackCluster(req.Name, len(available))
 
 	if len(available) == 0 {
 		port, err := c.portsMap.Acquire(req.Name)

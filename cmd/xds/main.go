@@ -52,7 +52,13 @@ func main() {
 		l.Fatalf("clientset error %+v", err)
 	}
 
-	if err = controllers.SetupEndpointController(mgr, server.Snapshot, conf.ProxyAddr, conf.ProxyPortMin, conf.ProxyPortMax); err != nil {
+	scaler := kube.NewScaler(l, clientset, conf.KubeNamespace)
+	monitor := xds.NewMonitorServer(scaler, xds.MonitorOptions{
+		ScaleToZeroAfter: conf.ScaleToZeroAfter,
+		ScaleToZeroCheck: conf.ScaleToZeroCheck,
+	})
+
+	if err = controllers.SetupEndpointController(mgr, monitor, server.Snapshot, conf.ProxyAddr, conf.ProxyPortMin, conf.ProxyPortMax); err != nil {
 		l.Fatalf("controller error %+v", err)
 	}
 
@@ -62,12 +68,6 @@ func main() {
 			l.Fatalf("controller start error %+v", err)
 		}
 	}()
-
-	scaler := kube.NewScaler(l, clientset, conf.KubeNamespace)
-	monitor := xds.NewMonitorServer(scaler, xds.MonitorOptions{
-		ScaleToZeroAfter: conf.ScaleToZeroAfter,
-		ScaleToZeroCheck: conf.ScaleToZeroCheck,
-	})
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", conf.XDSPort))
 	if err != nil {
