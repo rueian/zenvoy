@@ -58,7 +58,15 @@ func main() {
 		ScaleToZeroCheck: conf.ScaleToZeroCheck,
 	})
 
-	if err = controllers.SetupEndpointController(mgr, monitor, server.Snapshot, conf.ProxyAddr, conf.ProxyPortMin, conf.ProxyPortMax); err != nil {
+	if err = controllers.SetupEndpointController(
+		mgr,
+		monitor,
+		server.Snapshot,
+		conf.ProxyAddr,
+		conf.ProxyPortMin,
+		conf.ProxyPortMax,
+		xds.MakeVirtualHostFn(conf),
+	); err != nil {
 		l.Fatalf("controller error %+v", err)
 	}
 

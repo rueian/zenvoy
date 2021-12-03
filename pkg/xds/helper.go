@@ -14,6 +14,9 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"github.com/golang/protobuf/ptypes"
+	"github.com/rueian/zenvoy/pkg/config"
+	"github.com/rueian/zenvoy/pkg/xds/controllers"
+	v1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -81,25 +84,27 @@ func makeEndpoints(clusterName string, eps ...Endpoint) *endpoint.ClusterLoadAss
 	}
 }
 
-func makeVirtualHostRoutes(clusterName string, domain string, prefix string, timeout time.Duration) *route.VirtualHost {
-	return &route.VirtualHost{
-		Name:    clusterName,
-		Domains: []string{domain},
-		Routes: []*route.Route{{
-			Match: &route.RouteMatch{
-				PathSpecifier: &route.RouteMatch_Prefix{
-					Prefix: prefix,
-				},
-			},
-			Action: &route.Route_Route{
-				Route: &route.RouteAction{
-					ClusterSpecifier: &route.RouteAction_Cluster{
-						Cluster: clusterName,
+func MakeVirtualHostFn(conf config.XDS) controllers.EnvoyVirtualHostFn {
+	return func(endpoints *v1.Endpoints) (*route.VirtualHost, error) {
+		return &route.VirtualHost{
+			Name:    endpoints.Name,
+			Domains: []string{endpoints.Name},
+			Routes: []*route.Route{{
+				Match: &route.RouteMatch{
+					PathSpecifier: &route.RouteMatch_Prefix{
+						Prefix: "",
 					},
-					Timeout: ptypes.DurationProto(timeout),
 				},
-			},
-		}},
+				Action: &route.Route_Route{
+					Route: &route.RouteAction{
+						ClusterSpecifier: &route.RouteAction_Cluster{
+							Cluster: endpoints.Name,
+						},
+						Timeout: ptypes.DurationProto(conf.EnvoyReadTimeout),
+					},
+				},
+			}},
+		}, nil
 	}
 }
 

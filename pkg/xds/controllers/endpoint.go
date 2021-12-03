@@ -4,29 +4,32 @@ import (
 	"context"
 	"strings"
 
+	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	"github.com/rueian/zenvoy/pkg/alloc"
+	"github.com/rueian/zenvoy/pkg/xds"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	"github.com/rueian/zenvoy/pkg/alloc"
-	"github.com/rueian/zenvoy/pkg/xds"
 )
 
-func SetupEndpointController(mgr manager.Manager, monitor *xds.MonitorServer, snapshot *xds.Snapshot, proxyIP string, portMin, portMax uint32) error {
+func SetupEndpointController(mgr manager.Manager, monitor *xds.MonitorServer, snapshot *xds.Snapshot, proxyIP string, portMin, portMax uint32, vhFn EnvoyVirtualHostFn) error {
 	controller := &EndpointController{
 		Client:   mgr.GetClient(),
 		monitor:  monitor,
 		snapshot: snapshot,
 		portsMap: alloc.NewKeys(portMin, portMax),
 		proxyIP:  proxyIP,
+		vhFn:     vhFn,
 	}
 	return builder.ControllerManagedBy(mgr).
 		For(&v1.Endpoints{}).
 		Complete(controller)
 }
+
+type EnvoyVirtualHostFn func(endpoints *v1.Endpoints) (*route.VirtualHost, error)
 
 type EndpointController struct {
 	client.Client
@@ -34,6 +37,7 @@ type EndpointController struct {
 	snapshot *xds.Snapshot
 	portsMap *alloc.Keys
 	proxyIP  string
+	vhFn     EnvoyVirtualHostFn
 }
 
 func (c *EndpointController) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
@@ -49,6 +53,14 @@ func (c *EndpointController) Reconcile(ctx context.Context, req reconcile.Reques
 		} else {
 			return reconcile.Result{}, err
 		}
+	}
+
+	vh, err := c.vhFn(endpoints)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	if vh == nil {
+		return reconcile.Result{}, nil
 	}
 
 	var available []xds.Endpoint
@@ -70,7 +82,7 @@ func (c *EndpointController) Reconcile(ctx context.Context, req reconcile.Reques
 	}
 
 	c.snapshot.SetCluster(req.Name)
-	c.snapshot.SetClusterRoute(req.Name, req.Name, "")
+	c.snapshot.SetClusterRoute(req.Name, vh)
 	c.snapshot.SetClusterEndpoints(req.Name, available...)
 	return reconcile.Result{}, nil
 }
