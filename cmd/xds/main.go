@@ -8,42 +8,57 @@ import (
 	"os/signal"
 	"syscall"
 
-	"k8s.io/client-go/kubernetes"
-
-	"github.com/rueian/zenvoy/pkg/config"
+	envconfig "github.com/rueian/zenvoy/pkg/config"
 	"github.com/rueian/zenvoy/pkg/kube"
 	"github.com/rueian/zenvoy/pkg/logger"
 	"github.com/rueian/zenvoy/pkg/xds"
 	"github.com/rueian/zenvoy/pkg/xds/controllers"
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/kubernetes"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
-var l = &logger.Std{}
+var (
+	l      = &logger.Std{}
+	scheme = runtime.NewScheme()
+)
+
+func init() {
+	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+}
 
 func main() {
-	conf, err := config.GetXDS()
+	conf, err := envconfig.GetXDS()
 	if err != nil {
-		l.Fatalf("config error %+v", err)
+		l.Fatalf("envconfig error %+v", err)
 	}
 
 	server := xds.NewServer(l, conf.XDSNodeID, xds.Debug(l.Debug))
 
-	manager, err := controllers.NewControllerManager(conf.KubeNamespace)
+	clientConf, err := config.GetConfig()
+	if err != nil {
+		l.Fatalf("k8s client config error %+v", err)
+	}
+	mgr, err := manager.New(clientConf, manager.Options{Scheme: scheme, Namespace: conf.KubeNamespace})
 	if err != nil {
 		l.Fatalf("manager error %+v", err)
 	}
 
-	clientset, err := kubernetes.NewForConfig(manager.GetConfig())
+	clientset, err := kubernetes.NewForConfig(mgr.GetConfig())
 	if err != nil {
 		l.Fatalf("clientset error %+v", err)
 	}
 
-	if err = controllers.SetupEndpointController(manager, server.Snapshot, conf.ProxyAddr, conf.ProxyPortMin, conf.ProxyPortMax); err != nil {
+	if err = controllers.SetupEndpointController(mgr, server.Snapshot, conf.ProxyAddr, conf.ProxyPortMin, conf.ProxyPortMax); err != nil {
 		l.Fatalf("controller error %+v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		if err := manager.Start(ctx); err != nil {
+		if err := mgr.Start(ctx); err != nil {
 			l.Fatalf("controller start error %+v", err)
 		}
 	}()
