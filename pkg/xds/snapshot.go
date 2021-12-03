@@ -1,6 +1,7 @@
 package xds
 
 import (
+	"context"
 	"strconv"
 
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
@@ -96,9 +97,10 @@ func (s *Snapshot) setSnapshot() (err error) {
 		[]types.Resource{makeHTTPListener(ListenerName, RouteName)},
 		[]types.Resource{}, // runtimes
 		[]types.Resource{}, // secrets
+		nil,
 	)
 	if err = snapshot.Consistent(); err == nil {
-		err = s.cache.SetSnapshot(s.nodeID, snapshot)
+		err = s.cache.SetSnapshot(context.Background(), s.nodeID, snapshot)
 	}
 	if err == nil {
 		s.ver = ver

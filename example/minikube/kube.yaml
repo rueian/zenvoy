@@ -57,7 +57,7 @@ spec:
           ports:
             - containerPort: 18001
         - name: envoy
-          image: envoyproxy/envoy:v1.16.0
+          image: envoyproxy/envoy:v1.20.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 10000
