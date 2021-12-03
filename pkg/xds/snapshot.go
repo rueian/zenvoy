@@ -9,11 +9,13 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/log"
 	"github.com/golang/protobuf/proto"
+	"github.com/rueian/zenvoy/pkg/config"
 )
 
-func NewSnapshot(logger log.Logger, nodeID string) *Snapshot {
+func NewSnapshot(logger log.Logger, nodeID string, config config.XDS) *Snapshot {
 	return &Snapshot{
 		nodeID: nodeID,
+		config: config,
 		cache:  cache.NewSnapshotCache(true, cache.IDHash{}, logger),
 		cds:    map[string]types.Resource{},
 		eds:    map[string]types.Resource{},
@@ -27,6 +29,7 @@ type Snapshot struct {
 	eds    map[string]types.Resource
 	vhs    map[string]*route.VirtualHost
 	cache  cache.SnapshotCache
+	config config.XDS
 	nodeID string
 }
 
@@ -38,7 +41,7 @@ func (s *Snapshot) SetCluster(name string) error {
 	if _, ok := s.cds[name]; ok {
 		return nil
 	}
-	s.cds[name] = makeCluster(name)
+	s.cds[name] = makeCluster(name, s.config.EnvoyReadTimeout)
 	return s.setSnapshot()
 }
 
@@ -51,7 +54,7 @@ func (s *Snapshot) RemoveCluster(name string) error {
 }
 
 func (s *Snapshot) SetClusterRoute(name, domain, prefix string) error {
-	routes := makeVirtualHostRoutes(name, domain, prefix)
+	routes := makeVirtualHostRoutes(name, domain, prefix, s.config.EnvoyReadTimeout)
 	if original, ok := s.vhs[name]; ok && proto.Equal(original, routes) {
 		return nil
 	}

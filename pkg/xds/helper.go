@@ -27,10 +27,10 @@ type Endpoint struct {
 	Port uint32
 }
 
-func makeCluster(clusterName string) *cluster.Cluster {
+func makeCluster(clusterName string, timeout time.Duration) *cluster.Cluster {
 	return &cluster.Cluster{
 		Name:                 clusterName,
-		ConnectTimeout:       ptypes.DurationProto(5 * time.Second),
+		ConnectTimeout:       ptypes.DurationProto(timeout),
 		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_EDS},
 		EdsClusterConfig: &cluster.Cluster_EdsClusterConfig{
 			ServiceName: clusterName,
@@ -81,7 +81,7 @@ func makeEndpoints(clusterName string, eps ...Endpoint) *endpoint.ClusterLoadAss
 	}
 }
 
-func makeVirtualHostRoutes(clusterName string, domain string, prefix string) *route.VirtualHost {
+func makeVirtualHostRoutes(clusterName string, domain string, prefix string, timeout time.Duration) *route.VirtualHost {
 	return &route.VirtualHost{
 		Name:    clusterName,
 		Domains: []string{domain},
@@ -96,6 +96,7 @@ func makeVirtualHostRoutes(clusterName string, domain string, prefix string) *ro
 					ClusterSpecifier: &route.RouteAction_Cluster{
 						Cluster: clusterName,
 					},
+					Timeout: ptypes.DurationProto(timeout),
 				},
 			},
 		}},

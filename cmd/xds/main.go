@@ -36,7 +36,7 @@ func main() {
 		l.Fatalf("envconfig error %+v", err)
 	}
 
-	server := xds.NewServer(l, conf.XDSNodeID, xds.Debug(l.Debug))
+	server := xds.NewServer(l, conf.XDSNodeID, conf, xds.Debug(l.Debug))
 
 	clientConf, err := config.GetConfig()
 	if err != nil {

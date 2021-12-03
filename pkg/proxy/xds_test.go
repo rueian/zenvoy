@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rueian/zenvoy/pkg/config"
 	"google.golang.org/grpc"
 
 	"github.com/rueian/zenvoy/pkg/logger"
@@ -118,7 +119,7 @@ func setupXDS(t *testing.T) *XDSSuite {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := xds.NewServer(l, nodeID, xds.Debug(true))
+	server := xds.NewServer(l, nodeID, config.XDS{}, xds.Debug(true))
 	scaler := &mockScaler{chs: make(map[string]chan struct{})}
 	monitor := xds.NewMonitorServer(scaler, xds.MonitorOptions{
 		ScaleToZeroAfter: time.Millisecond,

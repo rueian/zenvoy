@@ -15,15 +15,16 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/log"
 	serverv3 "github.com/envoyproxy/go-control-plane/pkg/server/v3"
 	testv3 "github.com/envoyproxy/go-control-plane/pkg/test/v3"
+	"github.com/rueian/zenvoy/pkg/config"
 	"google.golang.org/grpc"
 )
 
 const grpcMaxConcurrentStreams = 1000000
 
-func NewServer(logger log.Logger, nodeID string, options ...func(s *Server)) *Server {
+func NewServer(logger log.Logger, nodeID string, config config.XDS, options ...func(s *Server)) *Server {
 	s := &Server{
 		logger:   logger,
-		Snapshot: NewSnapshot(logger, nodeID),
+		Snapshot: NewSnapshot(logger, nodeID, config),
 	}
 	for _, o := range options {
 		o(s)
