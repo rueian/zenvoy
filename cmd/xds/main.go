@@ -12,7 +12,6 @@ import (
 	"github.com/rueian/zenvoy/pkg/kube"
 	"github.com/rueian/zenvoy/pkg/logger"
 	"github.com/rueian/zenvoy/pkg/xds"
-	"github.com/rueian/zenvoy/pkg/xds/controllers"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -58,7 +57,7 @@ func main() {
 		ScaleToZeroCheck: conf.ScaleToZeroCheck,
 	})
 
-	if err = controllers.SetupEndpointController(
+	if err = xds.SetupEndpointController(
 		mgr,
 		monitor,
 		server.Snapshot,

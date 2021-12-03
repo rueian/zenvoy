@@ -15,7 +15,6 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/rueian/zenvoy/pkg/config"
-	"github.com/rueian/zenvoy/pkg/xds/controllers"
 	v1 "k8s.io/api/core/v1"
 )
 
@@ -84,7 +83,7 @@ func makeEndpoints(clusterName string, eps ...Endpoint) *endpoint.ClusterLoadAss
 	}
 }
 
-func MakeVirtualHostFn(conf config.XDS) controllers.EnvoyVirtualHostFn {
+func MakeVirtualHostFn(conf config.XDS) EnvoyVirtualHostFn {
 	return func(endpoints *v1.Endpoints) (*route.VirtualHost, error) {
 		return &route.VirtualHost{
 			Name:    endpoints.Name,
