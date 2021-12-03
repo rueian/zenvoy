@@ -30,27 +30,32 @@ type MonitorOptions struct {
 func NewMonitorServer(scaler Scaler, options MonitorOptions) *MonitorServer {
 	s := &MonitorServer{
 		options:  options,
-		clusters: make(map[string]stat),
+		clusters: make(map[string]clusterStats),
 		scaler:   scaler,
 	}
 	go s.idleClusterReaper()
 	return s
 }
 
+type clusterStats struct {
+	endpoints int
+	stats     map[string]stat
+}
+
 type MonitorServer struct {
 	mu       sync.RWMutex
 	options  MonitorOptions
-	clusters map[string]stat
+	clusters map[string]clusterStats
 	scaler   Scaler
 }
 
-func (s *MonitorServer) TrackCluster(cluster string, endpoints int) {
+func (s *MonitorServer) TrackCluster(name string, endpoints int) {
 	s.mu.Lock()
-	if prev, ok := s.clusters[cluster]; ok {
-		prev.liveEndpoints = endpoints
-		s.clusters[cluster] = prev
+	if prev, ok := s.clusters[name]; ok {
+		prev.endpoints = endpoints
+		s.clusters[name] = prev
 	} else {
-		s.clusters[cluster] = stat{liveEndpoints: endpoints, lastUpdateTime: time.Now().UnixNano() / 1e6}
+		s.clusters[name] = clusterStats{endpoints: endpoints, stats: make(map[string]stat)}
 	}
 	s.mu.Unlock()
 }
@@ -63,26 +68,41 @@ func (s *MonitorServer) RemoveCluster(cluster string) {
 
 func (s *MonitorServer) StreamMetrics(server metricsservice.MetricsService_StreamMetricsServer) error {
 	defer server.SendAndClose(&metricsservice.StreamMetricsResponse{})
+
+	var id string
+
 	for {
 		msg, err := server.Recv()
 		if err != nil {
 			return err
 		}
+
+		// the Identifier field will only present in the first message,
+		// we must manually check it before using it.
+		if msg.Identifier != nil {
+			id = msg.Identifier.GetNode().GetId()
+		}
+
 		s.mu.Lock()
 		for _, m := range msg.EnvoyMetrics {
 			if *m.Type == prom.MetricType_COUNTER && len(m.Metric) > 0 {
-				s.processCounter(m)
+				s.processCounter(id, m)
 			}
 		}
 		s.mu.Unlock()
 	}
 }
 
-func (s *MonitorServer) processCounter(m *prom.MetricFamily) {
+func (s *MonitorServer) processCounter(id string, m *prom.MetricFamily) {
 	if mn := *m.Name; strings.HasSuffix(mn, TriggerMetric) {
 		if parts := strings.Split(mn, "."); len(parts) == 3 {
 			name := parts[1]
-			prev := s.clusters[name]
+			cluster := s.clusters[name]
+			if cluster.stats == nil {
+				cluster.stats = make(map[string]stat)
+			}
+			prev := cluster.stats[id]
+
 			requestTotal := *m.Metric[0].Counter.Value // Value means the amount of received requestTotal.
 			lastUpdateTime := *m.Metric[0].TimestampMs
 
@@ -91,11 +111,12 @@ func (s *MonitorServer) processCounter(m *prom.MetricFamily) {
 			if requestTotal != prev.requestTotal {
 				prev.requestTotal = requestTotal
 				prev.lastUpdateTime = lastUpdateTime
+				cluster.stats[id] = prev
 				if requestTotal > 0 {
 					go s.scaler.ScaleFromZero(name)
 				}
 			}
-			s.clusters[name] = prev
+			s.clusters[name] = cluster // always assign it for ensuring we will handle it in the reaper
 		}
 	}
 }
@@ -106,11 +127,18 @@ func (s *MonitorServer) idleClusterReaper() {
 		now := time.Now().UnixNano() / 1e6
 
 		s.mu.RLock()
-		for cluster, stat := range s.clusters {
-			canScaleDown := now-stat.lastUpdateTime > s.options.ScaleToZeroAfter.Milliseconds()
+		for name, cluster := range s.clusters {
+			var lastUpdateTime int64
+			for _, stat := range cluster.stats {
+				if stat.lastUpdateTime > lastUpdateTime {
+					lastUpdateTime = stat.lastUpdateTime
+				}
+			}
 
-			if stat.liveEndpoints > 0 && canScaleDown {
-				go s.scaler.ScaleToZero(cluster)
+			canScaleDown := now-lastUpdateTime > s.options.ScaleToZeroAfter.Milliseconds()
+
+			if cluster.endpoints > 0 && canScaleDown {
+				go s.scaler.ScaleToZero(name)
 			}
 		}
 		s.mu.RUnlock()
