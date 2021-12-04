@@ -62,15 +62,17 @@ func (c *EndpointController) Reconcile(ctx context.Context, req reconcile.Reques
 		return reconcile.Result{}, nil
 	}
 
+	var count int
 	var available []Endpoint
 	for _, sub := range endpoints.Subsets {
 		port := c.findEndpointPort(endpoints, sub)
 		for _, addr := range sub.Addresses {
 			available = append(available, Endpoint{IP: addr.IP, Port: uint32(port)})
 		}
+		count += len(sub.Addresses) + len(sub.NotReadyAddresses)
 	}
 
-	c.monitor.TrackCluster(req.Name, len(available))
+	c.monitor.TrackCluster(req.Name, count)
 
 	if len(available) == 0 {
 		port, err := c.portsMap.Acquire(req.Name)
